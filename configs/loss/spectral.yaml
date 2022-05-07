@@ -1,0 +1,11 @@
+losses:
+  spec:
+    _target_: diffsynth.loss.SpectralLoss
+    fft_sizes: [64, 128, 256, 512, 1024, 2048]
+    hop_lengths: null 
+    win_lengths: null
+    mag_w: 1.0
+    log_mag_w: 1.0
+
+sched:
+  spec: 1.0

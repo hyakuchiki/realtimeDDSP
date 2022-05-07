@@ -1,0 +1,7 @@
+_target_: diffsynth.data.SliceDataset
+
+raw_dir: null
+db_path: null
+sample_rate: ${sample_rate}
+length: 1.0
+frame_rate: 50

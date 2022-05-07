@@ -1,0 +1,15 @@
+_target_: pytorch_lightning.Trainer
+
+max_epochs: 200
+gradient_clip_val: 0
+gpus: 1
+num_nodes: 1
+benchmark: False
+overfit_batches: 0.0
+limit_train_batches: 1.0
+auto_lr_find: False
+weights_summary: "top"
+check_val_every_n_epoch: 5
+min_epochs: 1
+log_every_n_steps: 50
+max_time: null

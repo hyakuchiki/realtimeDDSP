@@ -1,0 +1,28 @@
+# @package _global_
+
+defaults:
+  - override /trainer: default.yaml
+  - override /model: default.yaml
+  - override /data: wide.yaml
+  - override /synth: h2of.yaml
+  - override /loss: switch_spec.yaml
+
+name: null
+
+id_base: /home/n_masuda/Datasets/diffsynth-wide
+
+data:
+  data_cfgs:
+    id: 
+      base_dir: ${id_base}/${synth.name}
+    ood: 
+      base_dir: /home/n_masuda/Datasets/nsynth-train
+  batch_size: 64
+  train_key: id
+
+seed: 0
+ext_f0: false
+
+trainer:
+  max_epochs: 400
+  gradient_clip_val: 1.0
