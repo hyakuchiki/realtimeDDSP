@@ -55,12 +55,12 @@ class SliceDataset(Dataset):
             # split 
             audios = torch.split(audio, len_audio_chunk)
 
-            for x in tqdm(audios, position=1):
+            for x in tqdm(audios, position=1, leave=False):
                 # calculate features after slicing
-                if max(abs(audio)) < 1e-4:
+                if max(abs(x)) < 1e-3:
                     # only includes silence
                     continue
-                f0, periodicity, loudness = self.calculate_features(audio) # (1, n_frames)
+                f0, periodicity, loudness = self.calculate_features(x) # (1, n_frames)
                 if (periodicity<1e-3).all():
                     # too noisy to use for data
                     continue
@@ -70,7 +70,7 @@ class SliceDataset(Dataset):
                 idx+=1
         # write dataset length to database
         with self.lmdb_env.begin(write=True) as txn:
-            txn.put('length'.encode('utf-8'), f'{idx}:08d'.encode('utf-8'))
+            txn.put('length'.encode('utf-8'), f'{idx:08d}'.encode('utf-8'))
         self.len = idx
 
     def __len__(self):

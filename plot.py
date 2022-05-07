@@ -72,7 +72,7 @@ class AudioLogger(Callback):
             resyn_audio = torch.clamp(resyn_audio.detach().cpu(), -1, 1)
             orig_audio = torch.clamp(batch['audio'].detach().cpu(), -1, 1)
             
-            self.log_local(pl_module.logger.experiment[0], name, pl_module.current_epoch, orig_audio, resyn_audio)
+            self.log_local(pl_module.logger.experiment, name, pl_module.current_epoch, orig_audio, resyn_audio)
 
             if is_train:
                 pl_module.train()

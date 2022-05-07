@@ -14,8 +14,9 @@ defaults:
 # ex.) "val_0/lsd" - LSD of 0th validation dataset
 name: null
 sample_rate: 16000
-monitor: "val_1/lsd"
+monitor: "val_0/lsd"
 checkpoint_every: 50
+batch_size: 64
 seed: 0
 ckpt: null
 

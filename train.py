@@ -21,9 +21,9 @@ def main(cfg):
     # load dataset
     dataset = hydra.utils.instantiate(cfg.data)
     print(f'loaded {len(dataset)} samples')
-    train_set, valid_set = random_split(dataset, [len(dataset)*0.9, len(dataset)*0.1], generator=torch.Generator().manual_seed(cfg.seed))
-    train_dl = DataLoader(train_set, cfg.batch_size, shuffle=True, pin_memory=True)
-    valid_dl = DataLoader(valid_set, cfg.batch_size, shuffle=False)
+    train_set, valid_set = random_split(dataset, [int(len(dataset)*0.9), len(dataset)-int(len(dataset)*0.9)], generator=torch.Generator().manual_seed(cfg.seed))
+    train_dl = DataLoader(train_set, cfg.batch_size, shuffle=True, num_workers=8, pin_memory=True)
+    valid_dl = DataLoader(valid_set, cfg.batch_size, shuffle=False, num_workers=8)
     # trainer setup
     # keep every checkpoint_every epochs and best epoch
     checkpoint_callback = ModelCheckpoint(dirpath=os.getcwd(), monitor=cfg.monitor, save_top_k=-1, save_last=False, every_n_epochs=cfg.checkpoint_every)

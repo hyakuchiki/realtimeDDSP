@@ -1,6 +1,7 @@
 _target_: pytorch_lightning.Trainer
 
-max_epochs: 200
+max_epochs: -1
+max_steps: 100000
 gradient_clip_val: 0
 gpus: 1
 num_nodes: 1

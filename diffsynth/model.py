@@ -12,7 +12,7 @@ class EstimatorSynth(pl.LightningModule):
         super().__init__()
         self.synth = construct_synth_from_conf(synth_cfg)
         self.estimator = hydra.utils.instantiate(model_cfg.estimator, output_dim=self.synth.ext_param_size)
-        self.losses = hydra.utils.instantiate(losses_cfg)
+        self.losses = hydra.utils.instantiate(losses_cfg.losses)
         self.loss_w_sched = ParamSchedule(losses_cfg.sched) # loss weighting
         # assert all([(loss_name in self.loss_w_sched.sched) for loss_name in self.losses])
         self.lr = model_cfg.lr

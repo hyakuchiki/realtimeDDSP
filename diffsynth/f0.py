@@ -44,7 +44,7 @@ def compute_f0(audio, sample_rate, frame_rate):
     # pad=False is probably center=False
     # [output_shape=(1, 1 + int(time // hop_length))]
     with torch.no_grad():
-        f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=True, device='cuda:1', batch_size=2048, model='full', fmin=FMIN, fmax=FMAX, return_periodicity=True)
+        f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=True, device='cuda', batch_size=64, model='full', fmin=FMIN, fmax=FMAX, return_periodicity=True)
 
     f0_hz = f0_hz[0]
     periodicity = periodicity[0]

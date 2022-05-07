@@ -24,4 +24,4 @@ dag:
       signal_b: filtnoise
 fixed_params:
   f0: null # f0 conditioning
-static_params: null
+static_params: []
