@@ -53,13 +53,14 @@ def save_to_board(i, name, writer, orig_audio, resyn_audio, plot_num=4, sr=16000
     writer.add_figure('plot_recon_{0}'.format(name), fig, i)
 
 class AudioLogger(Callback):
-    def __init__(self, batch_frequency=1000):
+    def __init__(self, batch_frequency=1000, sr=16000):
         super().__init__()
         self.batch_freq = batch_frequency
+        self.sr = sr
 
     @rank_zero_only
     def log_local(self, writer, name, current_epoch, orig_audio, resyn_audio):
-        save_to_board(current_epoch, name, writer, orig_audio, resyn_audio)
+        save_to_board(current_epoch, name, writer, orig_audio, resyn_audio, plot_num=6, sr=self.sr)
 
     def log_audio(self, pl_module, batch, batch_idx, name="train"):
         if batch_idx % self.batch_freq == 0:
@@ -92,41 +93,3 @@ class SaveEvery(Callback):
         cur_epoch = pl_module.current_epoch
         if (cur_epoch+1) % self.every_n == 0:
             trainer.save_checkpoint(f"epoch_{cur_epoch}.ckpt")
-
-    # def on_fit_end(self, trainer, pl_module):
-    #     trainer.save_checkpoint(f"fit_end.ckpt")
-
-def save_to_board_mel(i, writer, orig_mel, recon_mel, plot_num=8):
-    orig_mel = orig_mel.detach().cpu()
-    recon_mel = recon_mel.detach().cpu()
-
-    fig, axes = plt.subplots(2, plot_num, figsize=(30, 8))
-    for j in range(plot_num):
-        axes[0, j].imshow(orig_mel[j], aspect=0.25)
-        axes[1, j].imshow(recon_mel[j], aspect=0.25)
-    fig.tight_layout()
-    writer.add_figure('plot_recon', fig, i)
-
-def plot_param_dist(param_stats):
-    """
-    violin plot of parameter values
-    """
-
-    fig, ax = plt.subplots(figsize=(15, 5))
-    labels = param_stats.keys()
-    parts = ax.violinplot(param_stats.values(), showmeans=True)
-    ax.set_xticks(np.arange(1, len(labels) + 1))
-    ax.set_xticklabels(labels, fontsize=8)
-    ax.set_xlim(0.25, len(labels) + 0.75)
-    ax.set_ylim(0, 1)
-    return fig
-
-def plot_envelope(target_audio, amp_env, name):
-    fig, ax = plt.subplots()
-    ax.plot(target_audio, zorder=0)
-    ax.plot(amp_env[:, 0], c='r', zorder=10)
-    if amp_env.shape[-1] > 1:
-        ax.plot(amp_env[:, 1], c='orange', zorder=5)
-    ax.axis('off')
-    fig.savefig('{0}.png'.format(name))
-    plt.close(fig)

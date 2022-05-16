@@ -22,6 +22,7 @@ data:
 
 seed: 0
 ext_f0: false
+sample_rate: 48000
 
 trainer:
   max_epochs: 400

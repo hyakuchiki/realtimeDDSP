@@ -1,8 +1,8 @@
 name: h2of
 dag:
-  harmor:
+  harmonic:
     config:
-      _target_: diffsynth.modules.generators.Additive
+      _target_: diffsynth.modules.generators.Harmonic
       sample_rate: ${sample_rate}
       normalize_below_nyquist: true
       n_harmonics: 256
@@ -20,8 +20,6 @@ dag:
     config:
       _target_: diffsynth.processor.Add
     connections:
-      signal_a: harmor
+      signal_a: harmonic
       signal_b: filtnoise
-fixed_params:
-  f0: null # f0 conditioning
-static_params: []
+conditioned: [f0,]

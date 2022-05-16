@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from diffsynth.processor import Processor
 import diffsynth.util as util
 import math
+from typing import Dict
 
 class WaveShaper(Processor):
     """
@@ -20,14 +21,11 @@ class WaveShaper(Processor):
         tables = torch.linspace(-xy_lim, xy_lim, table_size).unsqueeze(0).repeat(n_functions, 1)
         self.tables = nn.Parameter(tables)
         self.n_functions = n_functions
-        self.param_desc = {
-            'audio': {'size': 1, 'range': (-1, 1), 'type': 'raw'},
-            'dist_index': {'size': n_functions, 'range': (-1, 1), 'type': 'sigmoid'},
-            'dist_bias': {'size': n_functions, 'range': (-1, 1), 'type': 'sigmoid'},
-            'wave_mix': {'size': n_functions, 'range': (0, 1), 'type': 'sigmoid'}
-        }
+        self.param_sizes = {'audio': 1, 'dist_index': n_functions, 'dist_bias': n_functions, 'wave_mix': n_functions}
+        self.param_range = {'audio': (-1.0, 1.0), 'dist_index': (-1.0, 1.0), 'dist_bias': (-1.0, 1.0), 'wave_mix': (0.0, 1.0)}
+        self.param_types = {'audio': 'raw', 'dist_index': 'sigmoid', 'dist_bias': 'sigmoid', 'wave_mix': 'sigmoid'}
 
-    def waveshape(self, input_audio):
+    def waveshape(self, input_audio: torch.Tensor):
         batch_size, n_samples, n_funcs = input_audio.shape
         wave4d = self.tables[:, None, None, :] # (N=n_funcs, C=1, H=1, W=table_size)
         grid_x = input_audio.permute(2, 0, 1).unsqueeze(-1) # N=n_funcs, H=batch_size, W=n_samples, 1
@@ -40,7 +38,7 @@ class WaveShaper(Processor):
         output = torch.nn.functional.grid_sample(wave4d, grid, mode='bilinear', align_corners=True) 
         return output.squeeze(1).permute(1, 2, 0)
 
-    def forward(self, audio, dist_index, dist_bias, wave_mix):
+    def forward(self, params: Dict[str, torch.Tensor], n_samples: int):
         """pass audio through waveshaper
         Args:
             audio (torch.Tensor): [batch_size, n_samples]
@@ -53,6 +51,10 @@ class WaveShaper(Processor):
         Returns:
             [torch.Tensor]: Mixed audio. Shape [batch, n_samples]
         """
+        audio = params['audio']
+        dist_index = params['dist_index']
+        dist_bias = params['dist_bias']
+        wave_mix = params['wave_mix']
         audio = audio.unsqueeze(-1).expand(-1, -1, self.n_functions)
         
         dist_index = util.resample_frames(dist_index, audio.shape[1])

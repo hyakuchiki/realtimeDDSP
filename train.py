@@ -26,8 +26,8 @@ def main(cfg):
     valid_dl = DataLoader(valid_set, cfg.batch_size, shuffle=False, num_workers=8)
     # trainer setup
     # keep every checkpoint_every epochs and best epoch
-    checkpoint_callback = ModelCheckpoint(dirpath=os.getcwd(), monitor=cfg.monitor, save_top_k=-1, save_last=False, every_n_epochs=cfg.checkpoint_every)
-    callbacks = [pl.callbacks.LearningRateMonitor(logging_interval='step'), AudioLogger(), checkpoint_callback]
+    checkpoint_callback = ModelCheckpoint(dirpath=os.getcwd(), monitor=cfg.monitor, save_top_k=-1, save_last=False, every_n_epochs=cfg.ckpt_nepochs, every_n_train_steps=cfg.ckpt_nsteps)
+    callbacks = [pl.callbacks.LearningRateMonitor(logging_interval='step'), AudioLogger(sr=cfg.sample_rate), checkpoint_callback]
     if cfg.ckpt is not None:
         cfg.ckpt = hydra.utils.to_absolute_path(cfg.ckpt)
     trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=tb_logger)

@@ -38,7 +38,7 @@ class SliceDataset(Dataset):
         # calculate f0 and loudness
         # pad=True->center=True
         f0, periodicity = compute_f0(audio, self.sample_rate, frame_rate=self.frame_rate)
-        loudness = compute_loudness(audio, self.sample_rate, frame_rate=self.frame_rate, n_fft=1024)
+        loudness = compute_loudness(audio, self.sample_rate, frame_rate=self.frame_rate, n_fft=2048)
         return f0, periodicity, loudness
 
     def preprocess(self):
@@ -57,7 +57,7 @@ class SliceDataset(Dataset):
 
             for x in tqdm(audios, position=1, leave=False):
                 # calculate features after slicing
-                if max(abs(x)) < 1e-3:
+                if max(abs(x)) < 1e-2:
                     # only includes silence
                     continue
                 f0, periodicity, loudness = self.calculate_features(x) # (1, n_frames)

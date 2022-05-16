@@ -62,7 +62,7 @@ class SpectralLoss(nn.Module):
             return multi_spec_losses
 
 class LoudnessLoss(nn.Module):
-    def __init__(self, fft_size=1024, sr=16000, frame_rate=50, db=False) -> None:
+    def __init__(self, fft_size=2048, sr=16000, frame_rate=50, db=False) -> None:
         super().__init__()
         self.fft_size = fft_size
         self.sr = sr

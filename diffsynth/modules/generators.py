@@ -1,25 +1,26 @@
 import torch
 import torch.nn as nn
-from diffsynth.processor import Gen, WIDE_RANGE
+from diffsynth.f0 import FMIN, FMAX
+from diffsynth.processor import Processor
 import diffsynth.util as util
 import numpy as np
+from typing import Dict
 
-class Additive(Gen):
+class Harmonic(Processor):
     """Synthesize audio with a bank of harmonic sinusoidal oscillators.
     code mostly borrowed from DDSP"""
 
-    def __init__(self, sample_rate=16000, normalize_below_nyquist=True, name='harmonic', n_harmonics=256, freq_range=WIDE_RANGE):
+    def __init__(self, sample_rate=16000, normalize_below_nyquist=True, name='harmonic', n_harmonics=256, freq_range=(FMIN, FMAX)):
         super().__init__(name=name)
         self.sample_rate = sample_rate
         self.normalize_below_nyquist = normalize_below_nyquist
         self.n_harmonics = n_harmonics
-        self.param_desc = {
-                'amplitudes':               {'size': 1, 'range': (0, 1), 'type': 'exp_sigmoid'},
-                'harmonic_distribution':    {'size': self.n_harmonics, 'range': (0, 1), 'type': 'exp_sigmoid'}, 
-                'f0_hz':                    {'size': 1, 'range': freq_range, 'type': 'freq_sigmoid'}
-                }
+        self.freq_range = freq_range
+        self.param_sizes = {'amplitudes': 1, 'harmonic_distribution': self.n_harmonics, 'f0_hz': 1}
+        self.param_range = {'amplitudes': (0.0, 1.0), 'harmonic_distribution': (0.0, 1.0), 'f0_hz': freq_range}
+        self.param_types = {'amplitudes': 'exp_sigmoid', 'harmonic_distribution': 'exp_sigmoid', 'f0_hz': 'freq_sigmoid'}
 
-    def forward(self, amplitudes, harmonic_distribution, f0_hz, n_samples):
+    def forward(self, params: Dict[str, torch.Tensor], n_samples: int):
         """Synthesize audio with additive synthesizer from controls.
 
         Args:
@@ -31,6 +32,9 @@ class Additive(Gen):
         Returns:
         signal: A tensor of harmonic waves of shape [batch, n_samples].
         """
+        amplitudes = params['amplitudes']
+        harmonic_distribution = params['harmonic_distribution']
+        f0_hz = params['f0_hz']
         if len(f0_hz.shape) < 3: # when given as a condition
             f0_hz = f0_hz[:, :, None]
         # Bandlimit the harmonic distribution.
@@ -45,35 +49,7 @@ class Additive(Gen):
         signal = util.harmonic_synthesis(frequencies=f0_hz, amplitudes=amplitudes, harmonic_distribution=harmonic_distribution, n_samples=n_samples, sample_rate=self.sample_rate)
         return signal
 
-class Sinusoids(Gen):
-    def __init__(self, sample_rate=16000, name='sinusoids', n_sinusoids=64, freq_range=WIDE_RANGE):
-        super().__init__(name=name)
-        self.sample_rate = sample_rate
-        self.n_sinusoids = n_sinusoids
-        self.param_desc = {
-                'amplitudes':   {'size': self.n_sinusoids, 'range': (0, 2), 'type': 'exp_sigmoid'},
-                'frequencies':  {'size': self.n_sinusoids, 'range': freq_range, 'type': 'freq_sigmoid'}, 
-                }
-
-    def forward(self, amplitudes, frequencies, n_samples):
-        """Synthesize audio with sinusoid oscillators
-
-        Args:
-        amplitudes: Amplitude tensor of shape [batch, n_frames, n_sinusoids].
-        frequencies: Tensor of shape [batch, n_frames, n_sinusoids].
-
-        Returns:
-        signal: A tensor of harmonic waves of shape [batch, n_samples].
-        """
-
-        # resample to n_samples
-        amplitudes_envelope = util.resample_frames(amplitudes, n_samples)
-        frequency_envelope = util.resample_frames(frequencies, n_samples)
-
-        signal = util.oscillator_bank(frequency_envelope, amplitudes_envelope, self.sample_rate)
-        return signal
-
-class FilteredNoise(Gen):
+class FilteredNoise(Processor):
     """
     uses frequency sampling
     """
@@ -84,11 +60,11 @@ class FilteredNoise(Gen):
         self.scale_fn = scale_fn
         self.initial_bias = initial_bias
         self.amplitude = amplitude
-        self.param_desc = {
-                'freq_response':    {'size': self.filter_size // 2 + 1, 'range': (1e-7, 2.0), 'type': 'exp_sigmoid'}, 
-                }
+        self.param_sizes = {'freq_response': self.filter_size // 2 + 1}
+        self.param_range = {'freq_response': (1e-7, 2.0)}
+        self.param_types = {'freq_response': 'exp_sigmoid'}
 
-    def forward(self, freq_response, n_samples):
+    def forward(self, params: Dict[str, torch.Tensor], n_samples: int):
         """generate Gaussian white noise through FIRfilter
         Args:
             freq_response (torch.Tensor): frequency response (only magnitude) [batch, n_frames, filter_size // 2 + 1]
@@ -96,7 +72,7 @@ class FilteredNoise(Gen):
         Returns:
             [torch.Tensor]: Filtered audio. Shape [batch, n_samples]
         """
-
+        freq_response = params['freq_response']
         batch_size = freq_response.shape[0]
         if self.scale_fn:
             freq_response = self.scale_fn(freq_response + self.initial_bias)
@@ -105,43 +81,12 @@ class FilteredNoise(Gen):
         filtered = util.fir_filter(audio, freq_response, self.filter_size)
         return filtered
 
-class Wavetable(Gen):
-    """Synthesize audio from a wavetable (series of single cycle waveforms).
-    wavetable is parameterized
-    code mostly borrowed from DDSP
-    """
-
-    def __init__(self, len_waveform, sample_rate=16000, name='wavetable', freq_range=WIDE_RANGE):
-        super().__init__(name=name)
-        self.sample_rate = sample_rate
-        self.len_waveform = len_waveform
-        self.param_desc = {
-                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'sigmoid'}, 
-                'wavetable':    {'size': self.len_waveform, 'range': (-1, 1), 'type': 'sigmoid'}, 
-                'f0_hz':        {'size': 1, 'range': freq_range, 'type': 'freq_sigmoid'}, 
-                }
-
-    def forward(self, amplitudes, wavetable, f0_hz, n_samples):
-        """forward pass
-
-        Args:
-            amplitudes: (batch_size, n_frames)
-            wavetable ([type]): (batch_size, n_frames, len_waveform)
-            f0_hz ([type]): frequency of oscillator at each frame (batch_size, n_frames)
-
-        Returns:
-            signal: synthesized signal ([batch_size, n_samples])
-        """
-        
-        signal = util.wavetable_synthesis(f0_hz, amplitudes, wavetable, n_samples, self.sample_rate)
-        return signal
-
-class SawOscillator(Gen):
+class SawOscillator(Processor):
     """
     Synthesize audio from a saw oscillator
     """
 
-    def __init__(self, sample_rate=16000, n_harms=512, name='saw', freq_range=WIDE_RANGE):
+    def __init__(self, sample_rate=16000, n_harms=512, name='saw', freq_range=(FMIN, FMAX)):
         super().__init__(name=name)
         self.sample_rate = sample_rate
         # saw waveform
@@ -154,12 +99,11 @@ class SawOscillator(Gen):
         phase = torch.linspace(0.0, np.pi*2, 512).unsqueeze(0) # (1, timestep)
         saw = torch.sum(harm_dist * torch.sin(frequencies * phase), dim=0)
         self.register_buffer('waveform', saw)
-        self.param_desc = {
-                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'sigmoid'}, 
-                'f0_hz':        {'size': 1, 'range': freq_range, 'type': 'freq_sigmoid'}, 
-                }
-    
-    def forward(self, amplitudes, f0_hz, n_samples):
+        self.param_sizes = {'amplitudes': 1, 'f0_hz': 1}
+        self.param_range = {'amplitudes': (0.0, 1.0), 'f0_hz': freq_range}
+        self.param_types = {'amplitudes': 'exp_sigmoid', 'f0_hz': 'freq_sigmoid'}
+
+    def forward(self, params: Dict[str, torch.Tensor], n_samples: int):
         """forward pass of saw oscillator
 
         Args:
@@ -169,23 +113,23 @@ class SawOscillator(Gen):
         Returns:
             signal: synthesized signal ([batch_size, n_samples])
         """
-        
+        amplitudes = params['amplitudes']
+        f0_hz = params['f0_hz']
         signal = util.wavetable_synthesis(f0_hz, amplitudes, self.waveform, n_samples, self.sample_rate)
         return signal
 
-class SineOscillator(Gen):
+class SineOscillator(Processor):
     """Synthesize audio from a sine oscillator
     """
 
-    def __init__(self, sample_rate=16000, name='sin', freq_range=WIDE_RANGE):
+    def __init__(self, sample_rate=16000, name='sin', freq_range=(FMIN, FMAX)):
         super().__init__(name=name)
         self.sample_rate = sample_rate
-        self.param_desc = {
-                'amplitudes':   {'size': 1, 'range': (0, 1.0), 'type': 'sigmoid'}, 
-                'f0_hz':  {'size': 1, 'range': freq_range, 'type': 'freq_sigmoid'}, 
-                }
+        self.param_sizes = {'amplitudes': 1, 'f0_hz': 1}
+        self.param_range = {'amplitudes': (0.0, 1.0), 'f0_hz': freq_range}
+        self.param_types = {'amplitudes': 'exp_sigmoid', 'f0_hz': 'freq_sigmoid'}
 
-    def forward(self, amplitudes, f0_hz, n_samples):
+    def forward(self, params: Dict[str, torch.Tensor], n_samples: int):
         """forward pass of sine oscillator
 
         Args:
@@ -195,5 +139,7 @@ class SineOscillator(Gen):
         Returns:
             signal: synthesized signal ([batch_size, n_samples])
         """
+        amplitudes = params['amplitudes']
+        f0_hz = params['f0_hz']
         signal = util.sin_synthesis(f0_hz, amplitudes, n_samples, self.sample_rate)
         return signal

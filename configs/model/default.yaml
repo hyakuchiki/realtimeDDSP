@@ -1,6 +1,7 @@
-lr: 0.0005
-decay_rate: 0.99
+lr: 1e-4
 
 estimator:
   _target_: diffsynth.estimator.EstimatorFL
   hidden_size: 512
+
+sample_rate: ${sample_rate}

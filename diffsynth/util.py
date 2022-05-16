@@ -33,13 +33,13 @@ class StatsLog():
         for k, v in stat_dict.items():
             self.add_entry(k, v)
 
-def log_eps(x, eps=1e-4):
+def log_eps(x:torch.Tensor, eps:float=1e-4):
     return torch.log(x+eps)
 
-def exp_scale(x, log_exponent=3, max_value=2.0, threshold=1e-7):
+def exp_scale(x:torch.Tensor, log_exponent:float=3.0, max_value:float=2.0, threshold:float=1e-7):
     return max_value * x**log_exponent + threshold
 
-def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
+def exp_sigmoid(x:torch.Tensor, exponent:float=10.0, max_value:float=2.0, threshold:float=1e-7):
     """Exponentiated Sigmoid pointwise nonlinearity.
 
     Bounds input to [threshold, max_value] with slope given by exponent.
@@ -81,7 +81,7 @@ def sin_synthesis(frequencies, amplitudes, n_samples = 64000, sample_rate = 1600
     phase_velocity = frq_env / float(sample_rate)
     phase = torch.cumsum(phase_velocity, 1)[:, :-1] % 1.0 # [batch_size, n_samples]
     phase = torch.cat([torch.zeros(batch_size, 1).to(phase.device), phase], dim=1) # exclusive cumsum starting at 0
-    phase_rad = phase * 2 * np.pi
+    phase_rad = phase * 2 * math.pi
     if fm_signal is not None:
         audio = torch.sin(phase_rad+fm_signal)
     else:
@@ -89,14 +89,13 @@ def sin_synthesis(frequencies, amplitudes, n_samples = 64000, sample_rate = 1600
     audio *= amp_env
     return audio
 
-def wavetable_synthesis(frequencies, amplitudes, wavetable, n_samples = 64000, sample_rate = 16000, fm_signal=None):
+def wavetable_synthesis(frequencies:torch.Tensor, amplitudes:torch.Tensor, wavetable:torch.Tensor, n_samples:int = 64000, sample_rate:int = 16000):
     """wavetable synthesis similar to the one in DDSP
 
     Args:
         frequencies (torch.Tensor): Frame-wise frequency in Hz [batch_size, n_frames, 1]
         amplitudes (torch.Tensor): Frame-wise amplitude envelope [batch_size, n_frames, 1]
         wavetable: oscillator waveform can change each frame ([batch_size, n_frames, len_waveform]) or be constant ([batch_size, len_waveform])
-        fm_signal: audio rate signal for FM (phase modulation)
     Returns:
         audio: Audio at the frequency and amplitude of the inputs, with harmonics given by the wavetable. Shape[batch_size, n_samples]
     """
@@ -119,14 +118,11 @@ def wavetable_synthesis(frequencies, amplitudes, wavetable, n_samples = 64000, s
     phase_velocity = frq_env / float(sample_rate)
     phase = torch.cumsum(phase_velocity, 1)[:, :-1] % 1.0 # [batch_size, n_samples]
     phase = torch.cat([torch.zeros(batch_size, 1).to(phase.device), phase], dim=1) # exclusive cumsum starting at 0
-    if fm_signal is not None:
-        audio = linear_lookup(phase+fm_signal / (2*np.pi) , wavetable)
-    else:
-        audio = linear_lookup(phase, wavetable)
+    audio = linear_lookup(phase, wavetable)
     audio *= amp_env
     return audio
 
-def linear_lookup(phase, wavetable):
+def linear_lookup(phase: torch.Tensor, wavetable: torch.Tensor):
     """Lookup from wavetables
 
     Args:
@@ -149,14 +145,14 @@ def linear_lookup(phase, wavetable):
     weighted_wavetables = weights * wavetable
     return torch.sum(weighted_wavetables, dim=-1)
     
-def resample_frames(inputs, n_timesteps, mode='linear', add_endpoint=True):
+def resample_frames(inputs: torch.Tensor, n_timesteps: int, mode: str='linear', add_endpoint: bool=True):
     """interpolate signals with a value each frame into signal with a value each timestep
     [n_frames] -> [n_timesteps]
 
     Args:
         inputs (torch.Tensor): [n_frames], [batch_size, n_frames], [batch_size, n_frames, channels]
         n_timesteps (int): 
-        mode (str): 'window' for interpolating with overlapping windows
+        mode (str): interpolation mode
         add_endpoint ([type]): I think its for windowed interpolation
     Returns:
         torch.Tensor
@@ -172,12 +168,8 @@ def resample_frames(inputs, n_timesteps, mode='linear', add_endpoint=True):
     if len(orig_shape)==3:
         inputs = inputs.permute(0, 2, 1) # # [batch, channels, n_frames]
 
-    if mode == 'window':
-        raise NotImplementedError
-        # upsample_with_windows(outputs, n_timesteps, add_endpoint)
-    else:
-        # interpolate expects [batch_size, channel, (depth, height,) width]
-        outputs = nn.functional.interpolate(inputs, size=n_timesteps, mode=mode, align_corners=not add_endpoint)
+    # interpolate expects [batch_size, channel, (depth, height,) width]
+    outputs = nn.functional.interpolate(inputs, size=n_timesteps, mode=mode, align_corners=not add_endpoint)
     
     if len(orig_shape) == 1:
         outputs = outputs.squeeze(1) # get rid of dummy channel 
@@ -189,7 +181,7 @@ def resample_frames(inputs, n_timesteps, mode='linear', add_endpoint=True):
 
     return outputs
 
-def get_harmonic_frequencies(frequencies, n_harmonics):
+def get_harmonic_frequencies(frequencies: torch.Tensor, n_harmonics: int):
     """Create integer multiples of the fundamental frequency.
 
     Args:
@@ -205,7 +197,8 @@ def get_harmonic_frequencies(frequencies, n_harmonics):
     harmonic_frequencies = frequencies * f_ratios
     return harmonic_frequencies
 
-def remove_above_nyquist(frequency_envelopes, amplitude_envelopes, sample_rate=16000):
+def remove_above_nyquist(frequency_envelopes: torch.Tensor, 
+    amplitude_envelopes: torch.Tensor, sample_rate: int=16000):
     """Set amplitudes for oscillators above nyquist to 0.
 
     Args:
@@ -225,33 +218,24 @@ def remove_above_nyquist(frequency_envelopes, amplitude_envelopes, sample_rate=1
     amplitude_envelopes = torch.where(torch.ge(frequency_envelopes, sample_rate / 2.0), torch.zeros_like(amplitude_envelopes), amplitude_envelopes)
     return amplitude_envelopes
 
-def harmonic_synthesis(frequencies, amplitudes, harmonic_shifts=None, harmonic_distribution=None, n_samples=64000, sample_rate=16000, amp_resample_method='window'):
+def harmonic_synthesis(frequencies: torch.Tensor, amplitudes: torch.Tensor, harmonic_distribution: torch.Tensor, n_samples: int=64000, sample_rate: int=16000):
     """Generate audio from frame-wise monophonic harmonic oscillator bank.
 
     Args:
         frequencies: Frame-wise fundamental frequency in Hz. Shape [batch_size, n_frame, 1].
         amplitudes: Frame-wise oscillator peak amplitude. Shape [batch_size, n_frames, 1].
-        harmonic_shifts: Harmonic frequency variations (Hz), zero-centered. Total frequency of a harmonic is equal to (frequencies * harmonic_number * (1 + harmonic_shifts)). Shape [batch_size, n_frames, n_harmonics].
         harmonic_distribution: Harmonic amplitude variations, ranged zero to one. Total amplitude of a harmonic is equal to (amplitudes * harmonic_distribution). Shape [batch_size, n_frames, n_harmonics].
         n_samples: Total length of output audio. Interpolates and crops to this.
         sample_rate: Sample rate.
-        amp_resample_method: Mode with which to resample amplitude envelopes.
 
     Returns:
         audio: Output audio. Shape [batch_size, n_samples]
     """
 
-    if harmonic_distribution is not None:
-        n_harmonics = harmonic_distribution.shape[-1]
-    elif harmonic_shifts is not None:
-        n_harmonics = harmonic_shifts.shape[-1]
-    else:
-        n_harmonics = 1
+    n_harmonics = harmonic_distribution.shape[-1]
 
     # Create harmonic frequencies [batch_size, n_frames, n_harmonics].
     harmonic_frequencies = get_harmonic_frequencies(frequencies, n_harmonics)
-    if harmonic_shifts is not None:
-        harmonic_frequencies *= (1.0 + harmonic_shifts)
 
     # Create harmonic amplitudes [batch_size, n_frames, n_harmonics].
     if harmonic_distribution is not None:
@@ -261,15 +245,33 @@ def harmonic_synthesis(frequencies, amplitudes, harmonic_shifts=None, harmonic_d
 
     # Create sample-wise envelopes.
     frequency_envelopes = resample_frames(harmonic_frequencies, n_samples)  # cycles/sec
-    # amplitude_envelopes = resample_frames(harmonic_amplitudes, n_samples,method=amp_resample_method)
-    amplitude_envelopes = resample_frames(harmonic_amplitudes, n_samples) # window has not been implemented yet
+    # window resampling has not been implemented yet
+    amplitude_envelopes = resample_frames(harmonic_amplitudes, n_samples) 
     # Synthesize from harmonics [batch_size, n_samples].
-    audio = oscillator_bank(frequency_envelopes,
-                            amplitude_envelopes,
+    audio = oscillator_bank(frequency_envelopes, amplitude_envelopes,
                             sample_rate=sample_rate)
     return audio
 
-def oscillator_bank(frequency_envelopes, amplitude_envelopes, sample_rate=16000, sum_sinusoids=True):
+def oscillator_bank_stream(frequency_envelopes:torch.Tensor, amplitude_envelopes:torch.Tensor, init_phase:torch.Tensor, sample_rate:int=16000, sum_sinusoids:bool=True):
+    # Don't exceed Nyquist.
+    amplitude_envelopes = remove_above_nyquist(frequency_envelopes, amplitude_envelopes, sample_rate)
+
+    # Change Hz to radians per sample.
+    omegas = frequency_envelopes * (2.0 * math.pi)  # rad / sec
+    omegas = omegas / float(sample_rate)  # rad / sample
+
+    # Accumulate phase and synthesize.
+    phases = torch.cumsum(omegas, 1)
+    # add initial phase
+    phases = phases + init_phase
+    last_phase = phases[:, -1, :]
+    output = torch.sin(phases)    
+    output = amplitude_envelopes * output  # [batch_size, n_samples, n_sinusoids]
+    if sum_sinusoids:
+        output = torch.sum(output, dim=-1)  # [batch_size, n_samples]
+    return output, last_phase
+
+def oscillator_bank(frequency_envelopes:torch.Tensor, amplitude_envelopes:torch.Tensor, sample_rate:int=16000, sum_sinusoids:bool=True):
     """Generates audio from sample-wise frequencies for a bank of oscillators.
 
     Args:
@@ -277,7 +279,6 @@ def oscillator_bank(frequency_envelopes, amplitude_envelopes, sample_rate=16000,
         amplitude_envelopes: Sample-wise oscillator amplitude. Shape [batch_size, n_samples, n_sinusoids].
         sample_rate: Sample rate in samples per a second.
         sum_sinusoids: Add up audio from all the sinusoids.
-
     Returns:
         wav: Sample-wise audio. Shape [batch_size, n_samples, n_sinusoids] if sum_sinusoids=False, else shape is [batch_size, n_samples].
     """
@@ -286,12 +287,12 @@ def oscillator_bank(frequency_envelopes, amplitude_envelopes, sample_rate=16000,
     amplitude_envelopes = remove_above_nyquist(frequency_envelopes, amplitude_envelopes, sample_rate)
 
     # Change Hz to radians per sample.
-    omegas = frequency_envelopes * (2.0 * np.pi)  # rad / sec
+    omegas = frequency_envelopes * (2.0 * math.pi)  # rad / sec
     omegas = omegas / float(sample_rate)  # rad / sample
 
     # Accumulate phase and synthesize.
-    output = torch.cumsum(omegas, 1)
-    output = torch.sin(output)
+    phases = torch.cumsum(omegas, 1)
+    output = torch.sin(phases)    
     output = amplitude_envelopes * output  # [batch_size, n_samples, n_sinusoids]
     if sum_sinusoids:
         output = torch.sum(output, dim=-1)  # [batch_size, n_samples]
@@ -309,9 +310,9 @@ def get_fft_size(frame_size: int, ir_size: int) -> int:
     """
     convolved_frame_size = ir_size + frame_size - 1
     # Next power of 2.
-    return int(2**np.ceil(np.log2(convolved_frame_size)))
+    return int(2**math.ceil(math.log(convolved_frame_size, 2)))
 
-def frame_signal(signal, frame_size):
+def frame_signal(signal: torch.Tensor, frame_size: int):
     """
     cut signal into nonoverlapping frames
     Args:
@@ -322,11 +323,11 @@ def frame_signal(signal, frame_size):
     """
     signal_len = signal.shape[-1]
     padding = (frame_size - (signal_len % frame_size) ) % frame_size
-    signal = torch.nn.functional.pad(signal, (0, padding), 'constant', 0)
+    signal = torch.nn.functional.pad(signal, (0, padding), 'constant', 0.0)
     frames = torch.split(signal.unsqueeze(1), frame_size, dim=-1)
     return torch.cat(frames, dim=1)
 
-def slice_windows(signal, frame_size, hop_size, window=None):
+def slice_windows(signal: torch.Tensor, frame_size: int, hop_size: int, window:str='none'):
     """
     slice signal into overlapping frames
     pads end if (l_x - frame_size) % hop_size != 0
@@ -349,7 +350,7 @@ def slice_windows(signal, frame_size, hop_size, window=None):
         frames = frames * win
     return frames
 
-def variable_delay(phase, audio, buf_size):
+def variable_delay(phase: torch.Tensor, audio: torch.Tensor, buf_size: int):
     """delay with variable length
 
     Args:
@@ -391,7 +392,7 @@ def variable_delay(phase, audio, buf_size):
     #     output = output[:, :orig_len]
     #     return output
 
-def overlap_and_add(signal, frame_step):
+def overlap_and_add(signal:torch.Tensor, frame_step: int):
     """overlap-add signals ported from tf.signals
 
     Args:
@@ -460,7 +461,7 @@ def overlap_and_add(signal, frame_step):
     signal = signal[..., :output_length]
     return signal
 
-def crop_and_compensate_delay(audio, audio_size, ir_size, padding, delay_compensation):
+def crop_and_compensate_delay(audio: torch.Tensor, audio_size: int, ir_size: int, padding: str, delay_compensation: int):
     """Copied over from ddsp
     Crop audio output from convolution to compensate for group delay.
 
@@ -502,18 +503,18 @@ def crop_and_compensate_delay(audio, audio_size, ir_size, padding, delay_compens
     end = crop - start
     return audio[:, start:-end]
 
-def fir_filter(audio, freq_response, filter_size):
+def fir_filter(audio: torch.Tensor, freq_response: torch.Tensor, filter_size: int, padding:str='same'):
     # get IR
     h = torch.fft.irfft(freq_response, n=filter_size, dim=-1)
 
     # Compute filter windowed impulse response
     # window_size == filter_size
-    filter_window = torch.hann_window(filter_size).roll(filter_size//2,-1).to(audio.device)
+    filter_window = torch.hann_window(filter_size, dtype=torch.float32).roll(filter_size//2,-1).to(audio.device)
     h = filter_window[None, None, :] * h
-    filtered = fft_convolve(audio, h, padding='same')
+    filtered = fft_convolve(audio, h, padding=padding)
     return filtered
 
-def fft_convolve(audio, impulse_response, padding = 'same', delay_compensation = -1):
+def fft_convolve(audio: torch.Tensor, impulse_response: torch.Tensor, padding: str = 'same', delay_compensation:int = -1):
     """ ported from ddsp original description below
     Filter audio with frames of time-varying impulse responses.
 
@@ -567,7 +568,7 @@ def fft_convolve(audio, impulse_response, padding = 'same', delay_compensation =
                         'be the same.'.format(batch_size, batch_size_ir))
 
     # Cut audio into frames.
-    frame_size = int(np.ceil(audio_size / n_ir_frames))
+    frame_size = math.ceil(audio_size / n_ir_frames)
 
     audio_frames = frame_signal(audio, frame_size)
 
@@ -599,7 +600,7 @@ def fft_convolve(audio, impulse_response, padding = 'same', delay_compensation =
     return crop_and_compensate_delay(audio_out, audio_size, ir_size, padding,
                                     delay_compensation)
 
-def pad_or_trim_to_expected_length(vector, expected_len, pad_value=0, len_tolerance=20):
+def pad_or_trim_to_expected_length(vector: torch.Tensor, expected_len: int, pad_value: float=0.0, len_tolerance: int=20):
     """Ported from DDSP
     Make vector equal to the expected length.
 
@@ -646,30 +647,31 @@ def pad_or_trim_to_expected_length(vector, expected_len, pad_value=0, len_tolera
     vector = vector[0] if is_1d else vector
     return vector
 
-def midi_to_hz(notes):
+def midi_to_hz(notes: torch.Tensor):
     return 440.0 * (2.0**((notes - 69.0) / 12.0))
 
-def hz_to_midi(frequencies):
+def hz_to_midi(frequencies: torch.Tensor):
     """torch-compatible hz_to_midi function."""
-    if isinstance(frequencies, torch.Tensor):
-        notes = 12.0 * (torch.log2(frequencies+1e-5) - math.log2(440.0)) + 69.0
-        # Map 0 Hz to MIDI 0 (Replace -inf MIDI with 0.)
-        notes = torch.where(torch.le(frequencies, 0.0), torch.zeros_like(frequencies, device=frequencies.device), notes)
-    else:
-        notes = 12.0 * (math.log2(frequencies+1e-5) - math.log2(440.0)) + 69.0
+    notes = 12.0 * (torch.log2(frequencies+1e-5) - math.log(440.0, 2)) + 69.0
+    # Map 0 Hz to MIDI 0 (Replace -inf MIDI with 0.)
+    notes = torch.where(torch.le(frequencies, 0.0), torch.zeros_like(frequencies, device=frequencies.device), notes)
     return notes
 
-def unit_to_midi(unit, midi_min, midi_max = 90.0, clip = False):
+def hz_to_midi_float(frequencies: float):
+    notes = 12.0 * (math.log(frequencies+1e-5, 2) - math.log(440.0, 2)) + 69.0
+    return notes
+
+def unit_to_midi(unit: torch.Tensor, midi_min:float, midi_max:float = 90.0, clip:bool = False):
     """Map the unit interval [0, 1] to MIDI notes."""
     unit = torch.clamp(unit, 0.0, 1.0) if clip else unit
     return midi_min + (midi_max - midi_min) * unit
 
-def unit_to_hz(unit, hz_min, hz_max, clip = False):
+def unit_to_hz(unit: torch.Tensor, hz_min:float, hz_max:float, clip:bool = False):
     """Map unit interval [0, 1] to [hz_min, hz_max], scaling logarithmically."""
-    midi = unit_to_midi(unit, midi_min=hz_to_midi(hz_min), midi_max=hz_to_midi(hz_max), clip=clip)
+    midi = unit_to_midi(unit, midi_min=hz_to_midi_float(hz_min), midi_max=hz_to_midi_float(hz_max), clip=clip)
     return midi_to_hz(midi)
 
-def frequencies_sigmoid(freqs, hz_min=8.2, hz_max=8000.0):
+def frequencies_sigmoid(freqs: torch.Tensor, hz_min:float=8.2, hz_max:float=8000.0):
     """Sum of sigmoids to logarithmically scale network outputs to frequencies.
     without depth
 

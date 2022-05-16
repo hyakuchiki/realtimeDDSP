@@ -8,6 +8,7 @@ from torchaudio.functional import create_dct
 from diffsynth.util import log_eps, pad_or_trim_to_expected_length
 
 amp = lambda x: x[...,0]**2 + x[...,1]**2
+DB_RANGE = 80.0
 
 class MelSpec(nn.Module):
     def __init__(self, n_fft=2048, hop_length=1024, n_mels=128, sample_rate=16000, power=1, f_min=40, f_max=7600, pad_end=True, center=True):
@@ -125,7 +126,21 @@ def multiscale_fft(audio, sizes=[64, 128, 256, 512, 1024, 2048], hop_lengths=Non
         specs.append(amp(stft))
     return specs
 
-def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_db=120.0, ref_db=20.7, a_weighting=None, center=True):
+def spec_loudness(spec, a_weighting: torch.Tensor, range_db:float=DB_RANGE, ref_db:float=20.7):
+    """
+    Args:
+        spec: Shape [..., freq_bins]
+    """
+    power = spec.real**2+spec.imag**2
+    power_db = 10.0 * torch.log10(power + 1e-5)
+    loudness = power_db + a_weighting
+    # Set dynamic range.
+    loudness -= ref_db
+    loudness = torch.clamp(loudness, min=-range_db)
+    # Average over frequency bins.
+    return torch.mean(loudness, dim=-1)
+
+def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_db=DB_RANGE, ref_db=0.0, a_weighting=None, center=True):
     """Perceptual loudness in dB, relative to white noise, amplitude=1.
 
     Args:
@@ -134,7 +149,7 @@ def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_
         frame_rate: Rate of loudness frames in Hz.
         n_fft: Fft window size.
         range_db: Sets the dynamic range of loudness in decibels. The minimum loudness (per a frequency bin) corresponds to -range_db.
-        ref_db: Sets the reference maximum perceptual loudness as given by (A_weighting + 10 * log10(abs(stft(audio))**2.0). The default value corresponds to white noise with amplitude=1.0 and n_fft=2048. There is a slight dependence on fft_size due to different granularity of perceptual weighting.
+        ref_db: Sets the reference maximum perceptual loudness as given by (A_weighting + 10 * log10(abs(stft(audio))**2.0).
 
     Returns:
         Loudness in decibels. Shape [batch_size, n_frames] or [n_frames,].
@@ -147,27 +162,13 @@ def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_
     # Take STFT.
     hop_length = sample_rate // frame_rate
     s = torch.stft(audio, n_fft=n_fft, hop_length=hop_length, return_complex=True, center=center)
-    s = torch.view_as_real(s)
     # batch, frequency_bins, n_frames
-
-    # Compute power of each bin
-    power = amp(s)
-    power_db = torch.log10(power + 1e-5)
-    power_db *= 10.0
-
-    # Perceptual weighting.
+    s = s.permute(0, 2, 1)
     if a_weighting is None:
         frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=n_fft)
-        a_weighting = librosa.A_weighting(frequencies)[None, :, None]
+        a_weighting = librosa.A_weighting(frequencies)
         a_weighting = torch.from_numpy(a_weighting.astype(np.float32)).to(audio.device)
-    loudness = power_db + a_weighting
-
-    # Set dynamic range.
-    loudness -= ref_db
-    loudness = torch.clamp(loudness, min=-range_db)
-
-    # Average over frequency bins.
-    loudness = torch.mean(loudness, dim=1)
+    loudness = spec_loudness(s, a_weighting, range_db, ref_db)
 
     # Remove temporary batch dimension.
     loudness = loudness[0] if is_1d else loudness

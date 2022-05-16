@@ -15,9 +15,9 @@ class EstimatorSynth(pl.LightningModule):
         self.losses = hydra.utils.instantiate(losses_cfg.losses)
         self.loss_w_sched = ParamSchedule(losses_cfg.sched) # loss weighting
         # assert all([(loss_name in self.loss_w_sched.sched) for loss_name in self.losses])
+        self.sr = model_cfg.sample_rate
         self.lr = model_cfg.lr
-        self.decay_rate = model_cfg.decay_rate
-        self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20, sample_rate=16000)
+        self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20, sample_rate=self.sr)
 
     def estimate_param(self, conditioning):
         """
@@ -63,7 +63,7 @@ class EstimatorSynth(pl.LightningModule):
         ## audio losses
         mon_losses['lsd'] = compute_lsd(resyn_audio, target_audio)
         mon_losses['sc'] = spectral_convergence(resyn_audio, target_audio)
-        mon_losses['loud'] = loudness_loss(resyn_audio, target_audio)
+        mon_losses['loud'] = loudness_loss(resyn_audio, target_audio, self.sr)
         mon_losses['mfcc_l1'] = F.l1_loss(self.mfcc(resyn_audio)[:, 1:], self.mfcc(target_audio)[:, 1:])
         return mon_losses
 
@@ -104,7 +104,4 @@ class EstimatorSynth(pl.LightningModule):
         # optimizer = torch.optim.Adam(self.estimator.parameters(), self.lr)
         return {
         "optimizer": optimizer,
-        "lr_scheduler": {
-            "scheduler": torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=self.decay_rate)
-            }
         }
