@@ -126,19 +126,22 @@ def multiscale_fft(audio, sizes=[64, 128, 256, 512, 1024, 2048], hop_lengths=Non
         specs.append(amp(stft))
     return specs
 
-def spec_loudness(spec, a_weighting: torch.Tensor, range_db:float=DB_RANGE, ref_db:float=20.7):
+def spec_loudness(spec, a_weighting: torch.Tensor, range_db:float=DB_RANGE, ref_db:float=0.0):
     """
     Args:
         spec: Shape [..., freq_bins]
     """
     power = spec.real**2+spec.imag**2
-    power_db = 10.0 * torch.log10(power + 1e-5)
-    loudness = power_db + a_weighting
-    # Set dynamic range.
-    loudness -= ref_db
-    loudness = torch.clamp(loudness, min=-range_db)
-    # Average over frequency bins.
-    return torch.mean(loudness, dim=-1)
+    weighting = 10**(a_weighting/10) #db to linear
+    weighted_power = power * weighting
+    avg_power = torch.mean(weighted_power, dim=-1)
+    # to db
+    min_power = 10**-(range_db / 10.0)
+    power = torch.clamp(avg_power, min=min_power)
+    db = 10.0 * torch.log10(power)
+    db -= ref_db
+    db = torch.clamp(db, min=-range_db)
+    return db
 
 def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_db=DB_RANGE, ref_db=0.0, a_weighting=None, center=True):
     """Perceptual loudness in dB, relative to white noise, amplitude=1.

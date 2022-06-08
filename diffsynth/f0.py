@@ -3,7 +3,8 @@ import torch
 import torchcrepe  
 import math
 from diffsynth.util import pad_or_trim_to_expected_length
-FMIN = 110.0
+# limit for crepe, always used for normalization
+FMIN = 32.0
 FMAX = 2000.0
 
 def process_f0(f0_hz, periodicity):
@@ -25,7 +26,7 @@ def process_f0(f0_hz, periodicity):
     f0_hz[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), f0_hz[~mask])
     return torch.from_numpy(f0_hz)# Shape [1 + int(time // hop_length,]
 
-def compute_f0(audio, sample_rate, frame_rate):
+def compute_f0(audio, sample_rate, frame_rate, center=True, f0_range=(FMIN, FMAX)):
     """ For preprocessing
     Args:
         audio: torch.Tensor of single audio example. Shape [audio_length,].
@@ -43,7 +44,7 @@ def compute_f0(audio, sample_rate, frame_rate):
     # pad=False is probably center=False
     # [output_shape=(1, 1 + int(time // hop_length))]
     with torch.no_grad():
-        f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=True, device='cuda', batch_size=64, model='full', fmin=FMIN, fmax=FMAX, return_periodicity=True)
+        f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=center, device='cuda', batch_size=64, model='full', fmin=f0_range[0], fmax=f0_range[1], return_periodicity=True)
 
     f0_hz = f0_hz[0]
     periodicity = periodicity[0]

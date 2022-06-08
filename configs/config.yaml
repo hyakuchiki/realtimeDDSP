@@ -29,3 +29,6 @@ hydra:
   sweep:
     dir: logs/${name}/multirun_${now:%Y-%m-%d_%H-%M-%S}
     subdir: ${hydra.job.num}
+
+data:
+  f0_range: [32, 2000]

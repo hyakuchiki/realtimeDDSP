@@ -5,22 +5,22 @@ import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 import numpy as np
-from diffsynth.f0 import compute_f0
+from diffsynth.f0 import compute_f0, FMIN, FMAX
 from diffsynth.spectral import compute_loudness
 import torchcrepe
 import lmdb
-
 
 class SliceDataset(Dataset):
     # slice length [s] sections from longer audio files like urmp 
     # some of LMDB code borrowed from UDLS 
     # https://github.com/caillonantoine/UDLS/tree/7a99c503eb02ca60852626ca0542ddc1117295ac (MIT License)
     # and https://github.com/rmccorm4/PyTorch-LMDB/blob/master/folder2lmdb.py
-    def __init__(self, raw_dir, db_path, sample_rate=48000, length=1.0, frame_rate=50):
+    def __init__(self, raw_dir, db_path, sample_rate=48000, length=1.0, frame_rate=50, f0_range=(FMIN, FMAX)):
         self.raw_dir = raw_dir
         self.sample_rate = sample_rate
         self.length = length
         self.frame_rate = frame_rate
+        self.f0_range = f0_range
         assert sample_rate % frame_rate == 0
         os.makedirs(db_path, exist_ok=True)
         # max of ~100GB
@@ -37,8 +37,8 @@ class SliceDataset(Dataset):
     def calculate_features(self, audio):
         # calculate f0 and loudness
         # pad=True->center=True
-        f0, periodicity = compute_f0(audio, self.sample_rate, frame_rate=self.frame_rate)
-        loudness = compute_loudness(audio, self.sample_rate, frame_rate=self.frame_rate, n_fft=2048)
+        f0, periodicity = compute_f0(audio, self.sample_rate, frame_rate=self.frame_rate, center=True, f0_range=self.f0_range)
+        loudness = compute_loudness(audio, self.sample_rate, frame_rate=self.frame_rate, n_fft=2048, center=True)
         return f0, periodicity, loudness
 
     def preprocess(self):
