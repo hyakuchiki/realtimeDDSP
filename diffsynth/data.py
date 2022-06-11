@@ -79,4 +79,4 @@ class SliceDataset(Dataset):
     def __getitem__(self, idx):
         with self.lmdb_env.begin(write=False) as txn:
             x, f0, loudness = pickle.loads(txn.get(f"{idx:08d}".encode("utf-8")))
-        return {'audio': x, 'f0': f0, 'loud': loudness}
+        return {'audio': x, 'f0': f0[:, None], 'loud': loudness[:, None]}

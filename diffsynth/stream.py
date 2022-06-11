@@ -159,3 +159,65 @@ class StreamEstimatorFLSynth(nn.Module):
             params_dict = self.synth.fill_params(est_param, x)
             resyn_audio, outputs = self.synth(params_dict, audio_len)
             return resyn_audio
+
+class InputCache(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        # caching
+        self.offset = 0
+        self.hop_size = hop_size # 960@48kHz = 50Hz
+        self.window_size = 2048
+        self.input_cache = torch.zeros(1, self.window_size)
+
+class CachedStreamEstimatorFLSynth(nn.Module):
+    # harmonics plus noise model
+    def __init__(self, estimator, synth_cfg, sample_rate, hop_size=960, pitch_min=50.0, pitch_max=2000.0):
+        super().__init__()
+        self.sample_rate = sample_rate       
+        self.pitch_min = pitch_min
+        self.pitch_max = pitch_max
+        # caching
+        self.offset = 0
+        self.hop_size = hop_size # 960@48kHz = 50Hz
+        self.window_size = 2048
+        self.input_cache = torch.zeros(1, self.window_size)
+        self.output_cache = torch.zeros(1, self.hop_size)
+        # loudness
+        frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=self.window_size)
+        a_weighting = librosa.A_weighting(frequencies)
+        self.register_buffer('a_weighting', torch.from_numpy(a_weighting.astype(np.float32)))
+        # Estimator
+        self.estimator = estimator
+        # Synth
+        self.synth = construct_streaming_synth_from_conf(synth_cfg)
+
+    def forward(self, audio: torch.Tensor):
+        # audio (batch=1, n_samples=L)
+        with torch.no_grad():
+            orig_len = audio.shape[-1]
+            # input cache
+            audio = torch.cat([self.input_cache.to(audio.device), audio], dim=-1)
+            windows = util.slice_windows(audio, self.window_size, self.hop_size)
+            assert windows.shape[1] == (audio.shape[-1] - self.offset) // self.hop_size + 1
+
+            self.offset = self.hop_size - (audio.shape[-1] - self.offset) % self.hop_size
+            self.input_cache = audio[-(self.hop_size - self.offset):]
+
+            # f0
+            f0 = yin_frame(windows, self.sample_rate, self.pitch_min, self.pitch_max)
+            # loudness
+            comp_spec = torch.fft.rfft(windows, dim=-1)
+            loudness = spec_loudness(comp_spec, self.a_weighting)
+            print(f0.shape, loudness.shape)
+            # estimator
+            x = {'f0': f0[:,:,None], 'loud': loudness[:,:,None]} # batch=1, n_frames=windows.shape[1], 2
+            est_param = self.estimator(x)
+            params_dict = self.synth.fill_params(est_param, x)
+            render_length = (windows.shape[1]+1)*self.hop_size # accounting for previous frame
+            resyn_audio, outputs = self.synth(params_dict, render_length)
+            # output cache (delay)
+            resyn_audio = torch.cat([self.output_cache.to(audio.device), resyn_audio], dim=-1)
+            if resyn_audio.shape[-1] > orig_len:
+                resyn_audio = resyn_audio[:, :orig_len]
+                self.output_cache = resyn_audio[orig_len:]
+            return resyn_audio

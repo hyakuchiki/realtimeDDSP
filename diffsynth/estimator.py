@@ -22,7 +22,8 @@ class EstimatorFL(nn.Module):
         # normalize input 0~1
         f0 = (conditioning['f0'] - self.frange[0]) / (self.frange[1]-self.frange[0])
         loud = (conditioning['loud'] / self.db_range) + 1.0
-        x = torch.stack([f0, loud], dim=-1) # batch, n_frames, feat_dim=2
+        x = torch.cat([f0, loud], dim=-1) # batch, n_frames, feat_dim=2
+        print(x.shape)
         x, _hidden = self.gru(self.mlp_0(x))
         out = self.out(self.mlp_1(x))
         return torch.sigmoid(out)
