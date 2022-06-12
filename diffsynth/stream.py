@@ -113,61 +113,16 @@ def replace_modules(module):
             str_m = StatefulGRU(m)
             setattr(module, name, str_m)
 
-def construct_streaming_synth_from_conf(synth_conf):
-    dag = []
-    for module_name, v in synth_conf.dag.items():
-        module = hydra.utils.instantiate(v.config, name=module_name)
-        conn = v.connections
-        if isinstance(module, Harmonic):
-            module = StreamHarmonic(module.sample_rate, module.normalize_below_nyquist, module.name, module.n_harmonics, module.freq_range)
-        if isinstance(module, FilteredNoise):
-            module = StreamFilteredNoise(module.filter_size, module.scale_fn, module.name, module.initial_bias, module.amplitude)
-        dag.append((module, conn))
-    synth = Synthesizer(dag, conditioned=synth_conf.conditioned)
-    return synth
-
-class StreamEstimatorFLSynth(nn.Module):
-    # harmonics plus noise model
-    def __init__(self, estimator, synth_cfg, sample_rate, pitch_min=50.0, pitch_max=2000.0):
-        super().__init__()
-        self.sample_rate = sample_rate       
-        self.pitch_min = pitch_min
-        self.pitch_max = pitch_max
-        # loudness
-        frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=2048)
-        a_weighting = librosa.A_weighting(frequencies)
-        self.register_buffer('a_weighting', torch.from_numpy(a_weighting.astype(np.float32)))
-        # Estimator
-        self.estimator = estimator
-        # Synth
-        self.synth = construct_streaming_synth_from_conf(synth_cfg)
-
-    def forward(self, audio: torch.Tensor):
-        # audio (batch=1, n_samples=2048)
-        # audio should be 2048 samples
-        with torch.no_grad():
-            audio_len = audio.shape[-1]
-            assert audio_len == 2048
-            # f0
-            f0 = yin_frame(audio, self.sample_rate, self.pitch_min, self.pitch_max)[:, None]
-            # loudness
-            comp_spec = torch.fft.rfft(audio, dim=-1)
-            loudness = spec_loudness(comp_spec, self.a_weighting)[:, None]
-            # estimator
-            x = {'f0': f0, 'loud': loudness} # batch=1, n_frames=1
-            est_param = self.estimator(x)
-            params_dict = self.synth.fill_params(est_param, x)
-            resyn_audio, outputs = self.synth(params_dict, audio_len)
-            return resyn_audio
-
-class InputCache(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        # caching
-        self.offset = 0
-        self.hop_size = hop_size # 960@48kHz = 50Hz
-        self.window_size = 2048
-        self.input_cache = torch.zeros(1, self.window_size)
+def replace_processors(synth):
+    new_ps = []
+    for proc in synth.processors:
+        if isinstance(proc, Harmonic):
+            new_ps.append(StreamHarmonic(proc.sample_rate, proc.normalize_below_nyquist, proc.name, proc.n_harmonics, proc.freq_range))
+        elif isinstance(proc, FilteredNoise):
+            new_ps.append(StreamFilteredNoise(proc.filter_size, proc.scale_fn, proc.name, proc.initial_bias, proc.amplitude))
+        else:
+            new_ps.append(proc)
+    synth.processors = nn.ModuleList(new_ps)
 
 class CachedStreamEstimatorFLSynth(nn.Module):
     # harmonics plus noise model
@@ -186,10 +141,11 @@ class CachedStreamEstimatorFLSynth(nn.Module):
         frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=self.window_size)
         a_weighting = librosa.A_weighting(frequencies)
         self.register_buffer('a_weighting', torch.from_numpy(a_weighting.astype(np.float32)))
+        self.prev_f0 = torch.ones(1)*440
         # Estimator
         self.estimator = estimator
         # Synth
-        self.synth = construct_streaming_synth_from_conf(synth_cfg)
+        self.synth = synth
 
     def forward(self, audio: torch.Tensor):
         # audio (batch=1, n_samples=L)
@@ -202,13 +158,20 @@ class CachedStreamEstimatorFLSynth(nn.Module):
             self.offset = self.hop_size - ((orig_len - self.offset) % self.hop_size)
             self.input_cache = audio[:, -(self.window_size - self.offset):]
 
-            # f0
+            # use previous f0 if noisy
             f0 = yin_frame(windows, self.sample_rate, self.pitch_min, self.pitch_max)
+            if f0[:, 0] == 0:
+                f0[:, 0] = self.prev_f0
+            for i in range(1, f0.shape[1]):
+                if f0[:, i] == 0:
+                    f0[:, i] = f0[:, i-1]
+
+            self.prev_f0 = f0[:, -1]
             # loudness
             comp_spec = torch.fft.rfft(windows, dim=-1)
             loudness = spec_loudness(comp_spec, self.a_weighting)
             # estimator
-            x = {'f0': f0[:,:,None], 'loud': loudness[:,:,None]} # batch=1, n_frames=windows.shape[1], 2
+            x = {'f0': f0[:,:,None], 'loud': loudness[:,:,None]} # batch=1, n_frames=windows.shape[1], 1
             est_param = self.estimator(x)
             params_dict = self.synth.fill_params(est_param, x)
             render_length = windows.shape[1]*self.hop_size # last_of_prev_frame<->0th window<-...->last window

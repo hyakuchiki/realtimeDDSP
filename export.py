@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 
 from diffsynth.model import EstimatorSynth
-from diffsynth.stream import CachedStreamEstimatorFLSynth, replace_modules
+from diffsynth.stream import CachedStreamEstimatorFLSynth, replace_modules, replace_processors
 from neutone_sdk.audio import (
     AudioSample,
     AudioSamplePair,
@@ -20,7 +20,7 @@ logging.basicConfig()
 log = logging.getLogger(__name__)
 log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
 
-class RAVEModelWrapper(WaveformToWaveformBase):
+class DDSPModelWrapper(WaveformToWaveformBase):
     def get_model_name(self) -> str:
         return "DDSP.example"
 
@@ -76,6 +76,7 @@ class RAVEModelWrapper(WaveformToWaveformBase):
     @torch.no_grad()
     def do_forward_pass(
         self, x: Tensor,
+        params: Dict[str, torch.Tensor]
     ) -> Tensor:
         # Currently VST input-output is mono, which matches RAVE.
         if x.size(0) == 2:
@@ -93,9 +94,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     root_dir = Path(args.folder) / args.output
 
-    # wrap it
-    model = torch.jit.load(args.input)
-    wrapper = RAVEModelWrapper(model)
+    model = EstimatorSynth.load_from_checkpoint(args.ckpt)
+    replace_modules(model.estimator)
+    replace_processors(model.synth)
+    stream_model = CachedStreamEstimatorFLSynth(model.estimator, model.synth, 48000, hop_size=960)
+    dummy = torch.zeros(1, 2048)
+    _ = stream_model(dummy)
+    wrapper = DDSPModelWrapper(stream_model)
 
     soundpairs = None
     if args.sounds is not None:
@@ -105,10 +110,6 @@ if __name__ == "__main__":
             input_sample = AudioSample(wave, sr)
             rendered_sample = render_audio_sample(wrapper, input_sample)
             soundpairs.append(AudioSamplePair(input_sample, rendered_sample))
-
-    model = EstimatorSynth.load_from_checkpoint(args.ckpt)
-    replace_modules(model.estimator)
-    stream_model = CachedStreamEstimatorFLSynth(model.estimator, model.synth_cfg, 48000, hop_size=960)
 
     save_neutone_model(
         wrapper, root_dir, freeze=False, dump_samples=True, submission=True, audio_sample_pairs=soundpairs

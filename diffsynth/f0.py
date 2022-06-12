@@ -71,7 +71,11 @@ def yin_frame(audio_frame, sample_rate:int , pitch_min:float =50, pitch_max:floa
     cmdf = _diff(audio_frame, tau_max)[..., tau_min:]
     tau = _search(cmdf, tau_max, threshold)
 
-    return sample_rate / (tau + tau_min + 1).type(audio_frame.dtype)
+    return torch.where(
+            tau > 0,
+            sample_rate / (tau + tau_min + 1).type(audio_frame.dtype),
+            torch.tensor(0).type(audio_frame.dtype),
+        )
 
 def _diff(frames: torch.Tensor, tau_max: int) -> torch.Tensor:
     # frames: n_frames, frame_length
