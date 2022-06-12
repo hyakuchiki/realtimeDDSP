@@ -18,6 +18,7 @@ class EstimatorSynth(pl.LightningModule):
         self.sr = model_cfg.sample_rate
         self.lr = model_cfg.lr
         self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20, sample_rate=self.sr)
+        self.save_hyperparameters()
 
     def estimate_param(self, conditioning):
         """

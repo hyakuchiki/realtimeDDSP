@@ -327,7 +327,7 @@ def frame_signal(signal: torch.Tensor, frame_size: int):
     frames = torch.split(signal.unsqueeze(1), frame_size, dim=-1)
     return torch.cat(frames, dim=1)
 
-def slice_windows(signal: torch.Tensor, frame_size: int, hop_size: int, window:str='none'):
+def slice_windows(signal: torch.Tensor, frame_size: int, hop_size: int, window:str='none', pad:bool=True):
     """
     slice signal into overlapping frames
     pads end if (l_x - frame_size) % hop_size != 0
@@ -340,8 +340,9 @@ def slice_windows(signal: torch.Tensor, frame_size: int, hop_size: int, window:s
     """
     _batch_dim, l_x = signal.shape
     remainder = (l_x - frame_size) % hop_size
-    pad = 0 if (remainder == 0) else hop_size - remainder
-    signal = F.pad(signal, (0, pad), 'constant')
+    if pad:
+        pad = 0 if (remainder == 0) else hop_size - remainder
+        signal = F.pad(signal, (0, pad), 'constant')
     signal = signal[:, None, None, :] # adding dummy channel/height
     frames = F.unfold(signal, (1, frame_size), stride=(1, hop_size)) #batch, frame_size, n_frames
     frames = frames.permute(0, 2, 1) # batch, n_frames, frame_size

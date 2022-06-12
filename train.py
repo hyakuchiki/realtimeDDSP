@@ -11,7 +11,6 @@ def main(cfg):
     from torch.utils.data import DataLoader, random_split
     from pytorch_lightning.callbacks import ModelCheckpoint
     from diffsynth.model import EstimatorSynth
-    from diffsynth.data import SliceDataset
     pl.seed_everything(cfg.seed, workers=True)
     warnings.simplefilter('ignore', RuntimeWarning)
     # load model
