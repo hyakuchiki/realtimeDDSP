@@ -1,6 +1,6 @@
 import hydra
 
-@hydra.main(config_path="configs/", config_name="config.yaml")
+@hydra.main(config_path="configs/", config_name="config.yaml", version_base='1.1')
 def main(cfg):
     import os
     from omegaconf import open_dict

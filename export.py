@@ -71,7 +71,9 @@ class DDSPModelWrapper(WaveformToWaveformBase):
         return [2048]
 
     def get_citation(self) -> str:
-        return """Caillon, A., & Esling, P. (2021). RAVE: A variational autoencoder for fast and high-quality neural audio synthesis. arXiv preprint arXiv:2111.05011."""
+        return """
+        Engel, J., Hantrakul, L., Gu, C., & Roberts, A. (2020). DDSP:Differentiable Digital Signal Processing. ICLR.
+        """
 
     @torch.no_grad()
     def do_forward_pass(
@@ -81,7 +83,7 @@ class DDSPModelWrapper(WaveformToWaveformBase):
         # Currently VST input-output is mono, which matches RAVE.
         if x.size(0) == 2:
             x = x.mean(dim=0, keepdim=True)
-        out = self.model(x)
+        out, data = self.model(x)
         return out
 
 

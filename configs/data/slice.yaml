@@ -5,3 +5,5 @@ db_path: null
 sample_rate: ${sample_rate}
 length: 1.0
 frame_rate: 50
+f0_range: [32, 2000]
+f0_viterbi: true

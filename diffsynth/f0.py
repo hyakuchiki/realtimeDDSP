@@ -26,7 +26,7 @@ def process_f0(f0_hz, periodicity):
     f0_hz[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), f0_hz[~mask])
     return torch.from_numpy(f0_hz)# Shape [1 + int(time // hop_length,]
 
-def compute_f0(audio, sample_rate, frame_rate, center=True, f0_range=(FMIN, FMAX)):
+def compute_f0(audio, sample_rate, frame_rate, center=True, f0_range=(FMIN, FMAX), viterbi=True):
     """ For preprocessing
     Args:
         audio: torch.Tensor of single audio example. Shape [audio_length,].
@@ -43,8 +43,9 @@ def compute_f0(audio, sample_rate, frame_rate, center=True, f0_range=(FMIN, FMAX
     # uses viterbi by default
     # pad=False is probably center=False
     # [output_shape=(1, 1 + int(time // hop_length))]
+    f0_dec = torchcrepe.decode.viterbi if viterbi else torchcrepe.decode.argmax
     with torch.no_grad():
-        f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=center, device='cuda', batch_size=64, model='full', fmin=f0_range[0], fmax=f0_range[1], return_periodicity=True)
+        f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=center, device='cuda', batch_size=64, model='full', fmin=f0_range[0], fmax=f0_range[1], return_periodicity=True, decoder=f0_dec)
 
     f0_hz = f0_hz[0]
     periodicity = periodicity[0]

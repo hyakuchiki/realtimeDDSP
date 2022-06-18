@@ -1,4 +1,4 @@
-import os, glob, pickle
+import os, glob, pickle, itertools
 from tqdm import tqdm
 import librosa
 import torch
@@ -15,12 +15,13 @@ class SliceDataset(Dataset):
     # some of LMDB code borrowed from UDLS 
     # https://github.com/caillonantoine/UDLS/tree/7a99c503eb02ca60852626ca0542ddc1117295ac (MIT License)
     # and https://github.com/rmccorm4/PyTorch-LMDB/blob/master/folder2lmdb.py
-    def __init__(self, raw_dir, db_path, sample_rate=48000, length=1.0, frame_rate=50, f0_range=(FMIN, FMAX)):
+    def __init__(self, raw_dir, db_path, sample_rate=48000, length=1.0, frame_rate=50, f0_range=(FMIN, FMAX), f0_viterbi=True):
         self.raw_dir = raw_dir
         self.sample_rate = sample_rate
         self.length = length
         self.frame_rate = frame_rate
         self.f0_range = f0_range
+        self.f0_viterbi = f0_viterbi
         assert sample_rate % frame_rate == 0
         os.makedirs(db_path, exist_ok=True)
         # max of ~100GB
@@ -37,12 +38,12 @@ class SliceDataset(Dataset):
     def calculate_features(self, audio):
         # calculate f0 and loudness
         # pad=True->center=True
-        f0, periodicity = compute_f0(audio, self.sample_rate, frame_rate=self.frame_rate, center=True, f0_range=self.f0_range)
+        f0, periodicity = compute_f0(audio, self.sample_rate, frame_rate=self.frame_rate, center=True, f0_range=self.f0_range, viterbi=self.f0_viterbi)
         loudness = compute_loudness(audio, self.sample_rate, frame_rate=self.frame_rate, n_fft=2048, center=True)
         return f0, periodicity, loudness
 
     def preprocess(self):
-        self.raw_files = sorted(glob.glob(os.path.join(self.raw_dir, '**/*.wav'), recursive=True))
+        self.raw_files = sorted(list(itertools.chain(*(glob.glob(os.path.join(self.raw_dir, f'**/*.{ext}'), recursive=True) for ext in ['mp3', 'wav', 'MP3', 'WAV']))))
         # load audio
         idx = 0
         for audio_file in tqdm(self.raw_files, position=0):
@@ -64,7 +65,7 @@ class SliceDataset(Dataset):
                 if (periodicity<1e-3).all():
                     # too noisy to use for data
                     continue
-                data = (x, f0, loudness)
+                data = (x.numpy(), f0.numpy(), loudness.numpy())
                 with self.lmdb_env.begin(write=True) as txn:
                     txn.put(f'{idx:08d}'.encode('utf-8'), pickle.dumps(data))
                 idx+=1

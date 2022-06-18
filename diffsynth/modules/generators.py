@@ -54,14 +54,12 @@ class FilteredNoise(Processor):
     uses frequency sampling
     """
     
-    def __init__(self, filter_size=257, scale_fn=util.exp_sigmoid, name='noise', initial_bias=-5.0, amplitude=1.0):
+    def __init__(self, filter_size=257, name='noise', amplitude=1.0):
         super().__init__(name=name)
         self.filter_size = filter_size
-        self.scale_fn = scale_fn
-        self.initial_bias = initial_bias
         self.amplitude = amplitude
         self.param_sizes = {'freq_response': self.filter_size // 2 + 1}
-        self.param_range = {'freq_response': (1e-7, 2.0)}
+        self.param_range = {'freq_response': (0, 2.0)}
         self.param_types = {'freq_response': 'exp_sigmoid'}
 
     def forward(self, params: Dict[str, torch.Tensor], n_samples: int):
@@ -74,8 +72,6 @@ class FilteredNoise(Processor):
         """
         freq_response = params['freq_response']
         batch_size = freq_response.shape[0]
-        if self.scale_fn:
-            freq_response = self.scale_fn(freq_response + self.initial_bias)
 
         audio = (torch.rand(batch_size, n_samples)*2.0-1.0).to(freq_response.device) * self.amplitude
         filtered = util.fir_filter(audio, freq_response, self.filter_size)

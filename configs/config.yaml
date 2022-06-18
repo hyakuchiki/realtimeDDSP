@@ -24,6 +24,8 @@ ckpt: null
 trainer:
   check_val_every_n_epoch: 10
 hydra:
+  job:
+    chdir: true
   run:
     dir: logs/${name}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:

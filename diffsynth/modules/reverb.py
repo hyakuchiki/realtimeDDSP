@@ -5,15 +5,38 @@ import diffsynth.util as util
 import numpy as np
 from typing import Dict
 
-# input_audio decay gain
-# make ir 
-# set ir_0=0 (cut dry signal)
+class IRReverb(Processor):
+    """
+    Learns an IR as model parameter (always applied)
+    """
+    def __init__(self, name='ir', ir_s=1.0, sr=48000):
+        super().__init__(name)
+        ir_length = int(ir_s*sr)
+        noise = torch.rand(1, ir_length)*2-1 # [-1, 1)
+        # initial value should be zero to mask dry signal
+        self.register_buffer('zero', torch.zeros(1))
+        time = torch.linspace(0.0, 1.0, ir_length-1)
+        # initial ir = decaying white noise
+        self.ir = nn.Parameter((torch.rand(ir_length-1)-0.5)*0.1 * torch.exp(-5.0 * time), requires_grad=True)
+        self.ir_length = ir_length
+        self.param_sizes = {'audio': 1}
+        self.param_range = {'audio': (-1.0, 1.0)}
+        self.param_types = {'audio': 'raw'}
+
+    def forward(self, params: Dict[str, torch.Tensor], n_samples: int):
+        """
+        audio: input audio (batch, n_samples)
+        """
+        audio = params['audio']
+        ir = torch.cat([self.zero, self.ir], dim=0)[None, :].expand(audio.shape[0], -1)
+        wet = util.fft_convolve(audio, ir, padding='same', delay_compensation=0)
+        return audio+wet
 
 class DecayReverb(Processor):
     """
     Reverb with exponential decay
     1. Make IR based on decay and gain
-        - Exponentially decaying white noise -> avoids flanging?
+        - Exponentially decaying white noise
     2. convolve with IR
     3. Cut tail
     """

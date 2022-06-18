@@ -1,4 +1,5 @@
-name: hpn
+# Harmonic + noise model -> IR reverb
+name: hpnir
 dag:
   harmonic:
     config:
@@ -22,4 +23,9 @@ dag:
     connections:
       signal_a: harmonic
       signal_b: filtnoise
+  irreverb:
+    config:
+      _target_: diffsynth.modules.reverb.IRReverb
+    connections:
+      audio: add
 conditioned: [f0,]
