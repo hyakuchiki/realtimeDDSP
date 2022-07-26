@@ -1,11 +1,21 @@
+import hydra
 import torch
 import torch.nn.functional as F
-from diffsynth.spectral import compute_lsd, loudness_loss, Mfcc, spectral_convergence
 import pytorch_lightning as pl
-from diffsynth.modelutils import construct_synth_from_conf
-from diffsynth.schedules import ParamSchedule
-import hydra
+
 from itertools import chain
+from diffsynth.spectral import compute_lsd, loudness_loss, Mfcc, spectral_convergence
+from diffsynth.schedules import ParamSchedule
+from diffsynth.synthesizer import Synthesizer
+
+def construct_synth_from_conf(synth_conf):
+    dag = []
+    for module_name, v in synth_conf.dag.items():
+        module = hydra.utils.instantiate(v.config, name=module_name)
+        conn = v.connections
+        dag.append((module, conn))
+    synth = Synthesizer(dag, conditioned=synth_conf.conditioned)
+    return synth
 
 class EstimatorSynth(pl.LightningModule):
     def __init__(self, model_cfg, synth_cfg, losses_cfg):
@@ -14,7 +24,6 @@ class EstimatorSynth(pl.LightningModule):
         self.estimator = hydra.utils.instantiate(model_cfg.estimator, output_dim=self.synth.ext_param_size)
         self.losses = hydra.utils.instantiate(losses_cfg.losses)
         self.loss_w_sched = ParamSchedule(losses_cfg.sched) # loss weighting
-        # assert all([(loss_name in self.loss_w_sched.sched) for loss_name in self.losses])
         self.sr = model_cfg.sample_rate
         self.lr = model_cfg.lr
         self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20, sample_rate=self.sr)
@@ -71,7 +80,7 @@ class EstimatorSynth(pl.LightningModule):
     def training_step(self, batch_dict, batch_idx):
         # get loss weights
         loss_weights = self.loss_w_sched.get_parameters(self.global_step)
-        self.log_dict({'lw/'+k: v for k, v in loss_weights.items()}, on_epoch=True, on_step=False)
+        self.log_dict({'loss_weight/'+k: v for k, v in loss_weights.items()}, on_epoch=True, on_step=False)
         # render audio
         resyn_audio, output_dict = self(batch_dict)
         losses = self.train_losses(output_dict, batch_dict, loss_weights)

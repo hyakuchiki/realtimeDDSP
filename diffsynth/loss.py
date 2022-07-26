@@ -1,8 +1,6 @@
-from librosa.core import fft
 import torch
 import torch.nn as nn
-from diffsynth.spectral import multiscale_fft, compute_loudness, spectrogram
-import librosa
+from diffsynth.spectral import multiscale_fft
 from diffsynth.util import log_eps
 import torch.nn.functional as F
 import functools
@@ -60,24 +58,3 @@ class SpectralLoss(nn.Module):
         else:
             multi_spec_losses = {k: sum(v.values()) for k, v in spec_losses.items()}
             return multi_spec_losses
-
-class LoudnessLoss(nn.Module):
-    def __init__(self, fft_size=2048, sr=16000, frame_rate=50, db=False) -> None:
-        super().__init__()
-        self.fft_size = fft_size
-        self.sr = sr
-        self.frame_rate = frame_rate
-        self.db = db
-        frequencies = librosa.fft_frequencies(sr=sr, n_fft=fft_size)
-        a_weighting = librosa.A_weighting(frequencies)[None, :, None]
-        self.register_buffer('a_weighting', torch.from_numpy(a_weighting).float())
-
-    def __call__(self, output_dict, target_dict):
-        x_audio = output_dict['output']
-        target_audio = target_dict['audio']
-        x_loud = compute_loudness(x_audio, self.sr, self.frame_rate, a_weighting=self.a_weighting)
-        target_loud = compute_loudness(target_audio, self.sr, self.frame_rate, a_weighting=self.a_weighting)
-        l1_loss = F.l1_loss(torch.pow(10, x_loud/10), torch.pow(10, target_loud/10))
-        if self.db:
-            l1_loss = 10 * torch.log10(l1_loss)
-        return l1_loss

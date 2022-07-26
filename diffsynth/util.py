@@ -374,25 +374,7 @@ def variable_delay(phase: torch.Tensor, audio: torch.Tensor, buf_size: int):
     # shape: (B, C=1, H=1, W)
     output = output.squeeze(2).squeeze(1)
     return output
-
-    # pad_sig = torch.nn.functional.pad(audio, (buf_size-1, 0))
-    # assert orig_len % proc_len == 0
-    # if proc_len is None:
-    #     frames = slice_windows(pad_sig, buf_size, 1) # (b, n_samples, buf_size)
-    #     return linear_lookup(phase, frames)
-    # else:
-    #     output = []
-    #     sig_frames = slice_windows(pad_sig, proc_len+buf_size-1, proc_len)
-    #     n_frames = sig_frames.shape[1]
-    #     for i in range(n_frames):
-    #         sig = sig_frames[:, i] # (batch, proc_len+buf_size-1)
-    #         ph = phase[:, i*proc_len:(i+1)*proc_len]
-    #         ll_frames = slice_windows(sig, buf_size, 1) # (batch, proc_len, max_length)
-    #         output.append(linear_lookup(ph, ll_frames)) # (batch, proc_len)
-    #     output = torch.cat(output, dim=-1)
-    #     output = output[:, :orig_len]
-    #     return output
-
+    
 def overlap_and_add(signal:torch.Tensor, frame_step: int):
     """overlap-add signals ported from tf.signals
 

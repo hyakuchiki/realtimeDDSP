@@ -1,13 +1,11 @@
 import os, glob, pickle, itertools
 from tqdm import tqdm
-import librosa
+import torchaudio
 import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
-import numpy as np
 from diffsynth.f0 import compute_f0, FMIN, FMAX
 from diffsynth.spectral import compute_loudness
-import torchcrepe
 import lmdb
 
 class SliceDataset(Dataset):
@@ -47,7 +45,7 @@ class SliceDataset(Dataset):
         # load audio
         idx = 0
         for audio_file in tqdm(self.raw_files, position=0):
-            audio, _sr = librosa.load(audio_file, sr=self.sample_rate, mono=True)
+            audio, _sr = torchaudio.load(audio_file, sr=self.sample_rate, mono=True)
             # pad so that it can be evenly sliced
             len_audio_chunk = int(self.sample_rate*self.length)
             audio = torch.from_numpy(audio)

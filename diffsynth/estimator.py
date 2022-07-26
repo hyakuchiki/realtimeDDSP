@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from diffsynth.layers import Resnet1D, Normalize2d, MLP
+from diffsynth.layers import MLP
 from diffsynth.f0 import FMIN, FMAX
 from diffsynth.spectral import DB_RANGE
 from typing import Dict

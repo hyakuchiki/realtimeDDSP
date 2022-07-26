@@ -5,7 +5,7 @@ defaults:
   - trainer: default.yaml
   - model: default.yaml
   - data: slice.yaml
-  - synth: hpn.yaml
+  - synth: hpnir.yaml
   - loss: spectral.yaml
   - exp: null
   - optuna: null
@@ -17,7 +17,7 @@ sample_rate: 48000
 monitor: "val_0/lsd"
 ckpt_nepochs: null
 ckpt_nsteps: 10000
-batch_size: 64
+batch_size: 16
 seed: 0
 ckpt: null
 
