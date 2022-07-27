@@ -1,10 +1,7 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-import hydra
-from diffsynth.modules.generators import FilteredNoise, Harmonic
-from diffsynth.modules.reverb import IRReverb
-from diffsynth.processor import Processor
+from diffsynth.processor import Processor, Mix
 import diffsynth.util as util
 from diffsynth.f0 import yin_frame, FMIN, FMAX
 from diffsynth.spectral import spec_loudness
@@ -107,9 +104,9 @@ class StreamIRReverb(Processor):
         super().__init__(name=name)
         self.register_buffer('ir', torch.cat([torch.zeros(1), ir], dim=0)[None, :].expand(batch_size, -1))
         self.register_buffer('buffer', torch.zeros(batch_size, 16000))
-        self.param_sizes = {'audio': 1}
-        self.param_range = {'audio': (-1.0, 1.0)}
-        self.param_types = {'audio': 'raw'}
+        self.param_sizes = {'audio': 1, 'mix': 1}
+        self.param_range = {'audio': (-1.0, 1.0), 'mix': (0.0, 1.0)}
+        self.param_types = {'audio': 'raw', 'mix': 'sigmoid'}
 
     def forward(self, params: Dict[str, torch.Tensor], n_samples: int):
         """generate Gaussian white noise through FIRfilter
@@ -120,6 +117,7 @@ class StreamIRReverb(Processor):
             [torch.Tensor]: Filtered audio. Shape [batch, n_samples]
         """
         audio = params['audio']
+        mix = params['mix']
         audio_len = audio.shape[-1]
         wet = util.fft_convolve(audio, self.ir, padding='valid', delay_compensation=0)
         # add output and buffer
@@ -129,7 +127,7 @@ class StreamIRReverb(Processor):
 
         self.buffer = buffer_wet[..., audio_len:]
         out_wet = buffer_wet[..., :audio_len]
-        output = out_wet + audio
+        output = mix*2*out_wet + (1-mix)*2*audio
         return output
 
 def replace_modules(module):
@@ -139,19 +137,6 @@ def replace_modules(module):
         if isinstance(m, torch.nn.GRU):
             str_m = StatefulGRU(m)
             setattr(module, name, str_m)
-
-def replace_processors(synth):
-    new_ps = []
-    for proc in synth.processors:
-        if isinstance(proc, Harmonic):
-            new_ps.append(StreamHarmonic(proc.sample_rate, proc.normalize_below_nyquist, proc.name, proc.n_harmonics, proc.freq_range))
-        elif isinstance(proc, FilteredNoise):
-            new_ps.append(StreamFilteredNoise(proc.filter_size, proc.name, proc.amplitude))
-        elif isinstance(proc, IRReverb):
-            new_ps.append(StreamIRReverb(proc.ir, proc.name))
-        else:
-            new_ps.append(proc)
-    synth.processors = nn.ModuleList(new_ps)
 
 class CachedStreamEstimatorFLSynth(nn.Module):
     # harmonics plus noise model
@@ -176,7 +161,7 @@ class CachedStreamEstimatorFLSynth(nn.Module):
         # Synth
         self.synth = synth
 
-    def forward(self, audio: torch.Tensor):
+    def forward(self, audio: torch.Tensor, f0_mult: torch.Tensor, param: Dict[str, torch.Tensor]):
         # audio (batch=1, n_samples=L)
         with torch.no_grad():
             orig_len = audio.shape[-1]
@@ -202,10 +187,11 @@ class CachedStreamEstimatorFLSynth(nn.Module):
                     f0[:, i] = f0[:, i-1]
                     # loudness[:, i] = 0
 
-
             self.prev_f0 = f0[:, -1]
             # estimator
+            f0 = f0_mult * f0
             x = {'f0': f0[:,:,None], 'loud': loudness[:,:,None]} # batch=1, n_frames=windows.shape[1], 1
+            x.update(param)
             est_param = self.estimator(x)
             params_dict = self.synth.fill_params(est_param, x)
             render_length = windows.shape[1]*self.hop_size # last_of_prev_frame<->0th window<-...->last window

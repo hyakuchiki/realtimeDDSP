@@ -32,6 +32,26 @@ class IRReverb(Processor):
         wet = util.fft_convolve(audio, ir, padding='same', delay_compensation=0)
         return audio+wet
 
+class IRReverbMix(IRReverb):
+    """
+    Learns an IR as model parameter (always applied)
+    """
+    def __init__(self, name='ir', ir_s=1.0, sr=48000):
+        super().__init__(name, ir_s, sr)
+        self.param_sizes = {'audio': 1, 'mix': 1}
+        self.param_range = {'audio': (-1.0, 1.0), 'mix': (0.0, 1.0)}
+        self.param_types = {'audio': 'raw', 'mix': 'sigmoid'}
+
+    def forward(self, params: Dict[str, torch.Tensor], n_samples: int):
+        """
+        audio: input audio (batch, n_samples)
+        """
+        audio = params['audio']
+        mix = params['mix']
+        ir = torch.cat([self.zero, self.ir], dim=0)[None, :].expand(audio.shape[0], -1)
+        wet = util.fft_convolve(audio, ir, padding='same', delay_compensation=0)
+        return (1-mix)*2*audio + mix*2*wet
+
 class DecayReverb(Processor):
     """
     Reverb with exponential decay

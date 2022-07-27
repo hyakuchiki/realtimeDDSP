@@ -1,12 +1,19 @@
 import json, os, logging, argparse
 from pathlib import Path
 from typing import Dict, List
+import omegaconf
 
 import torch
 from torch import Tensor
 
 from diffsynth.model import EstimatorSynth
-from diffsynth.stream import CachedStreamEstimatorFLSynth, replace_modules, replace_processors
+from diffsynth.modules.generators import FilteredNoise, Harmonic
+from diffsynth.modules.reverb import IRReverb
+from diffsynth.synthesizer import Synthesizer
+from diffsynth.processor import Mix
+from diffsynth.stream import StreamFilteredNoise, StreamIRReverb, StreamHarmonic
+
+from diffsynth.stream import CachedStreamEstimatorFLSynth, replace_modules
 from neutone_sdk.audio import (
     AudioSample,
     AudioSamplePair,
@@ -19,6 +26,44 @@ import torchaudio
 logging.basicConfig()
 log = logging.getLogger(__name__)
 log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
+
+def get_stream_synth(synth):
+    new_ps = []
+    new_cs = []
+    conditioned = synth.conditioned_params
+    for proc, conn in zip(synth.processors, synth.connections):
+        if isinstance(proc, Harmonic):
+            # Replace with streamable version of harmonic synthesizer
+            new_ps.append(StreamHarmonic(proc.sample_rate, proc.normalize_below_nyquist, proc.name, proc.n_harmonics, proc.freq_range))
+            new_cs.append(conn)
+        elif isinstance(proc, FilteredNoise):
+            # Replace with streamable version of noise synthesizer
+            new_ps.append(StreamFilteredNoise(proc.filter_size, proc.name, proc.amplitude))
+            new_cs.append(conn)
+        elif isinstance(proc, IRReverb):
+            # Replace with streamable version of ir reverb
+            new_ps.append(StreamIRReverb(proc.ir, proc.name))
+            conn_mix = dict(conn)
+            # this version has a parameter for adjusting reverb mix
+            conn_mix['mix'] = 'irmix'
+            new_cs.append(conn_mix)
+            conditioned.append('irmix')
+        elif proc.name == 'add':
+            # Replace add module with mix module for adjusting harm/noise
+            new_ps.append(Mix(proc.name))
+            conn_mix = dict(conn)
+            conn_mix['mix_a'] = 'harmmix'
+            conn_mix['mix_b'] = 'noisemix'
+            new_cs.append(conn_mix)
+            conditioned.extend(['harmmix', 'noisemix'])
+        else:
+            new_ps.append(proc)
+            new_cs.append(conn)
+    synth.processors = torch.nn.ModuleList(new_ps)
+    # make new synth
+    dag = [(proc, conn) for proc, conn in zip(new_ps, new_cs)]
+    new_synth = Synthesizer(dag, conditioned=conditioned)
+    return new_synth
 
 class DDSPModelWrapper(WaveformToWaveformBase):
     def get_model_name(self) -> str:
@@ -56,8 +101,12 @@ class DDSPModelWrapper(WaveformToWaveformBase):
         return True
 
     def get_neutone_parameters(self) -> List[NeutoneParameter]:
-        return []
-
+        return [
+            NeutoneParameter(name='Pitch Shift', description='Magnitude of latent noise', default_value=0.5),
+            NeutoneParameter(name='Harmonics Mix', description='Mix of harmonic synthesizer', default_value=0.5),
+            NeutoneParameter(name='Noise Mix', description='Mix of noise synthesizer', default_value=0.5),
+            NeutoneParameter(name='Reverb Mix', description='Mix of IR reverb', default_value=0.5),
+            ]
     def is_input_mono(self) -> bool:
         return True
 
@@ -80,12 +129,20 @@ class DDSPModelWrapper(WaveformToWaveformBase):
         self, x: Tensor,
         params: Dict[str, torch.Tensor]
     ) -> Tensor:
-        # Currently VST input-output is mono, which matches RAVE.
         if x.size(0) == 2:
             x = x.mean(dim=0, keepdim=True)
-        out, data = self.model(x)
+        # pitch shift parameter
+        MAX_SHIFT = 24 # semitones
+        pshift = (params['Pitch Shift'] - 0.5) * 2 * MAX_SHIFT # -24~24
+        semishift = torch.round(pshift)
+        f0_mult = 2**(semishift/12)
+        # Harmonics/Noise, reverb mix
+        harm_mix = params['Harmonics Mix'] * 2 # 0(no harmonics)~2
+        noise_mix = params['Noise Mix'] * 2 # 0(no noise)~2
+        rev_mix = params['Reverb Mix'] # 0(no reverb)~1(reverb only)
+        cond_params = {'harmmix': harm_mix, 'noisemix': noise_mix, 'irmix': rev_mix}
+        out, data = self.model(x, f0_mult=f0_mult, param=cond_params)
         return out
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -98,10 +155,11 @@ if __name__ == "__main__":
 
     model = EstimatorSynth.load_from_checkpoint(args.ckpt)
     replace_modules(model.estimator)
-    replace_processors(model.synth)
+    # get streamable hpnir synth with mix parameters
+    model.synth = get_stream_synth(model.synth)
     stream_model = CachedStreamEstimatorFLSynth(model.estimator, model.synth, 48000, hop_size=960)
     dummy = torch.zeros(1, 2048)
-    _ = stream_model(dummy)
+    _ = stream_model(dummy, torch.ones(1), {'harmmix': torch.ones(1), 'noisemix': torch.ones(1), 'irmix': torch.ones(1)*0.5})
     wrapper = DDSPModelWrapper(stream_model)
 
     soundpairs = None

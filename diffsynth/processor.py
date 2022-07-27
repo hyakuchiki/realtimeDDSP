@@ -74,9 +74,30 @@ class Mix(Processor):
         signal_b = params['signal_b']
         mix_a = params['mix_a']
         mix_b = params['mix_b']
+        if mix_a.ndim > 1:
+            if mix_a.shape[1] != n_samples:
+                mix_a = util.resample_frames(mix_a, n_samples)
+            if mix_b.shape[1] != n_samples:
+                mix_b = util.resample_frames(mix_b, n_samples)
+            return mix_a[:, :, 0] * signal_a + mix_b[:, :, 0] * signal_b
+        else:
+            return mix_a * signal_a + mix_b * signal_b
 
-        if mix_a.shape[1] != n_samples:
-            mix_a = util.resample_frames(mix_a, n_samples)
-        if mix_b.shape[1] != n_samples:
-            mix_b = util.resample_frames(mix_b, n_samples)
-        return mix_a[:, :, 0] * signal_a + mix_b[:, :, 0] * signal_b
+class VCA(Processor):
+    def __init__(self, name='vca'):
+        super().__init__(name=name)
+        self.param_desc = {
+                'signal': {'size':1, 'range': (-1, 1), 'type': 'raw'}, 
+                'amp': {'size':1, 'range': (0, 10), 'type': 'sigmoid'},
+                }    
+
+    def forward(self, signal, amp):
+        # signal: batch, n_samples
+        # amp: batch, n_frames, 1
+        if amp.ndim > 1:
+            n_samples = signal.shape[1]
+            if amp.shape[1] != n_samples:
+                amp = util.resample_frames(amp, n_samples)
+            return amp[:, :, 0]*signal
+        else:
+            return amp*signal

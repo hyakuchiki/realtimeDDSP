@@ -77,7 +77,7 @@ class Synthesizer(nn.Module):
         """
         outputs = dag_inputs
         for processor, connections in zip(self.processors, self.connections):
-            # fixed params are not in 0~1 and do not need to be scaled
+            # conditioned params do not need to be scaled
             scaled: List[str] = []
             for k in connections:
                 if connections[k] in self.conditioned_params:
