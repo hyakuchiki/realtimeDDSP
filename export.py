@@ -161,14 +161,16 @@ if __name__ == "__main__":
     _ = stream_model(dummy, torch.ones(1), {'harmmix': torch.ones(1), 'noisemix': torch.ones(1), 'irmix': torch.ones(1)*0.5})
     wrapper = DDSPModelWrapper(stream_model)
 
-    soundpairs = None
+    soundpairs = []
     if args.sounds is not None:
-        soundpairs = []
-        for sound in args.sounds:
-            wave, sr = torchaudio.load(sound)
-            input_sample = AudioSample(wave, sr)
-            rendered_sample = render_audio_sample(wrapper, input_sample)
-            soundpairs.append(AudioSamplePair(input_sample, rendered_sample))
+        sounds = args.sounds
+    else:
+        sounds = ['data/339357-mono.mp3', 'data/test_lead_mono.mp3']
+    for sound in sounds:
+        wave, sr = torchaudio.load(sound)
+        input_sample = AudioSample(wave, sr)
+        rendered_sample = render_audio_sample(wrapper, input_sample)
+        soundpairs.append(AudioSamplePair(input_sample, rendered_sample))
 
     save_neutone_model(
         wrapper, root_dir, freeze=False, dump_samples=True, submission=True, audio_sample_pairs=soundpairs

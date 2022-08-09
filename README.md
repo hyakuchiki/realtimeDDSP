@@ -63,6 +63,9 @@ Here are some extra arguments you might want to edit:
 - Train with a performance of a single instrument!
     - DDSP works best for modeling a single instrument.
     - Current estimator only uses pitch and loudness as input, which doesn't allow for diverse timbre.
+- Use pretrained ckpt file for instruments with limited range
+    - Some instruments with limited range might produce silence for sounds outside its original range.
+    - Using pretrained ckpt (by adding `ckpt=data/pretrain_sawnoise.ckpt`) may produce better extrapolation.
 
 ## Details
 
