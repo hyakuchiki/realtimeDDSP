@@ -11,7 +11,7 @@ import lmdb
 class SliceDataset(Dataset):
     # slice length [s] sections from longer audio files like urmp 
     # some of LMDB code borrowed from UDLS 
-    # https://github.com/caillonantoine/UDLS/tree/7a99c503eb02ca60852626ca0542ddc1117295ac (MIT License)
+    # https://github.com/caillonantoine/UDLS/tree/7a99c503eb02ca60852626ca0542ddc1117295ac (A. Caillon, MIT License)
     # and https://github.com/rmccorm4/PyTorch-LMDB/blob/master/folder2lmdb.py
     def __init__(self, raw_dir, db_path, sample_rate=48000, length=1.0, frame_rate=50, f0_range=(FMIN, FMAX), f0_viterbi=True):
         self.raw_dir = raw_dir
@@ -44,11 +44,18 @@ class SliceDataset(Dataset):
         self.raw_files = sorted(list(itertools.chain(*(glob.glob(os.path.join(self.raw_dir, f'**/*.{ext}'), recursive=True) for ext in ['mp3', 'wav', 'MP3', 'WAV']))))
         # load audio
         idx = 0
+        resample = {}
         for audio_file in tqdm(self.raw_files, position=0):
-            audio, _sr = torchaudio.load(audio_file, sr=self.sample_rate, mono=True)
+            audio, orig_sr = torchaudio.load(audio_file)
+            audio = audio.mean(dim=0) # (~channels~, samples)
+            # resample
+            if orig_sr != self.sample_rate:
+                if orig_sr not in resample:
+                    # save kernel
+                    resample[orig_sr] = torchaudio.transforms.Resample(orig_sr, self.sample_rate, resampling_method='kaiser_window', lowpass_filter_width=64, rolloff=0.99)
+                audio = resample[orig_sr](audio)
             # pad so that it can be evenly sliced
             len_audio_chunk = int(self.sample_rate*self.length)
-            audio = torch.from_numpy(audio)
             pad_audio = (len_audio_chunk - (audio.shape[-1] % len_audio_chunk)) % len_audio_chunk
             audio = F.pad(audio, (0, pad_audio))
             # split 

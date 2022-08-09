@@ -1,24 +1,17 @@
 import os
 import numpy as np
-import librosa
-import librosa.display
 import matplotlib.pyplot as plt
 import torch
+import torchaudio
 from pytorch_lightning.utilities.distributed import rank_zero_only
 from pytorch_lightning.callbacks import Callback
-
-def plot_spec(y, ax, sr=16000):
-    D = librosa.stft(y)  # STFT of y
-    S_db = librosa.amplitude_to_db(np.abs(D), ref=np.max)
-    img = librosa.display.specshow(S_db, sr=sr, x_axis='time', y_axis='log', ax=ax)
-    ax.label_outer()
 
 def plot_recons(x, x_tilde, plot_dir, name=None, epochs=None, sr=16000, num=6, save=True):
     """Plot spectrograms/waveforms of original/reconstructed audio
 
     Args:
-        x (numpy array): [batch, n_samples]
-        x_tilde (numpy array): [batch, n_samples]
+        x (numpy array): [n_samples]
+        x_tilde (numpy array): [n_samples]
         sr (int, optional): sample rate. Defaults to 16000.
         dir (str): plot directory.
         name (str, optional): file name.
@@ -27,8 +20,8 @@ def plot_recons(x, x_tilde, plot_dir, name=None, epochs=None, sr=16000, num=6, s
     """
     fig, axes = plt.subplots(num, 4, figsize=(15, 30), squeeze=False)
     for i in range(num):
-        plot_spec(x[i], axes[i, 0], sr)
-        plot_spec(x_tilde[i], axes[i, 1], sr)
+        axes[i, 0].specgram(x[i], Fs=sr, scale='dB')
+        axes[i, 1].specgram(x_tilde[i], Fs=sr, scale='dB')
         axes[i, 2].plot(x[i])
         axes[i, 2].set_ylim(-1,1)
         axes[i, 3].plot(x_tilde[i])

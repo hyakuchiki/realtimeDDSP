@@ -1,3 +1,4 @@
+# Harmonic + noise model without reverb
 name: hpn
 dag:
   harmonic:

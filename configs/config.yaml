@@ -10,19 +10,23 @@ defaults:
   - exp: null
   - optuna: null
 
-# name of stat to use as monitor 
-# ex.) "val_0/lsd" - LSD of 0th validation dataset
 name: null
 sample_rate: 48000
-monitor: "val_0/lsd"
 ckpt_nepochs: null
 ckpt_nsteps: 10000
 batch_size: 16
 seed: 0
-ckpt: null
+ckpt: null # Used for resuming from checkpoint
+
+data:
+  f0_range: [32, 2000]
 
 trainer:
   check_val_every_n_epoch: 10
+  # Max iterations
+  max_steps: 100000
+
+# Output directory
 hydra:
   job:
     chdir: true
@@ -32,5 +36,6 @@ hydra:
     dir: logs/${name}/multirun_${now:%Y-%m-%d_%H-%M-%S}
     subdir: ${hydra.job.num}
 
-data:
-  f0_range: [32, 2000]
+# name of stat to use as monitor for optuna multirun
+# ex.) "val_0/lsd" - LSD of 0th validation dataset
+monitor: "val_0/lsd"

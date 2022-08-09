@@ -1,5 +1,7 @@
 # Harmonic + noise model -> IR reverb
 name: hpnir
+# Parameter to be estimated externally:
+# AMP, HARM, FREQRES
 dag:
   harmonic:
     config:
@@ -21,11 +23,14 @@ dag:
     config:
       _target_: diffsynth.processor.Add
     connections:
+      # adds together the outputs from harmonic and filtered noise
       signal_a: harmonic
       signal_b: filtnoise
   irreverb:
     config:
       _target_: diffsynth.modules.reverb.IRReverb
     connections:
+      # Uses the output from "add" module as input
       audio: add
+# Parameters that are conditioned (precomputed)
 conditioned: [f0,]

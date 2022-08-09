@@ -3,7 +3,6 @@ import hydra
 @hydra.main(config_path="configs/", config_name="config.yaml", version_base='1.1')
 def main(cfg):
     import os
-    from omegaconf import open_dict
     import pytorch_lightning as pl
     import torch
     from plot import AudioLogger
@@ -30,10 +29,7 @@ def main(cfg):
     if cfg.ckpt is not None:
         cfg.ckpt = hydra.utils.to_absolute_path(cfg.ckpt)
     trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=tb_logger)
-    # log hyperparameters
-    with open_dict(cfg):
-        cfg.model.total_params = sum(p.numel() for p in model.parameters())
-    # make model
+    # train model
     trainer.fit(model, train_dl, valid_dl, ckpt_path=cfg.ckpt)
     # torch.save(datamodule, os.path.join(os.getcwd(), 'datamodule.pt'))
     # return value used for optuna

@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-import librosa
 from torchaudio.transforms import MelScale
 from torchaudio.functional import create_dct
 from diffsynth.util import log_eps, pad_or_trim_to_expected_length
@@ -143,6 +142,24 @@ def spec_loudness(spec, a_weighting: torch.Tensor, range_db:float=DB_RANGE, ref_
     db = torch.clamp(db, min=-range_db)
     return db
 
+def A_weighting(frequencies, min_db=-80.0):
+    # ported from librosa
+    f_sq = np.asanyarray(frequencies) ** 2.0
+    const = np.array([12194.217, 20.598997, 107.65265, 737.86223]) ** 2.0
+    weights = 2.0 + 20.0 * (
+        np.log10(const[0])
+        + 2 * np.log10(f_sq)
+        - np.log10(f_sq + const[0])
+        - np.log10(f_sq + const[1])
+        - 0.5 * np.log10(f_sq + const[2])
+        - 0.5 * np.log10(f_sq + const[3])
+    )
+    return weights if min_db is None else np.maximum(min_db, weights)
+
+def fft_frequencies(*, sr=22050, n_fft=2048):
+    # ported from librosa
+    return np.fft.rfftfreq(n=n_fft, d=1.0 / sr)
+
 def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_db=DB_RANGE, ref_db=0.0, a_weighting=None, center=True):
     """Perceptual loudness in dB, relative to white noise, amplitude=1.
 
@@ -168,8 +185,8 @@ def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_
     # batch, frequency_bins, n_frames
     s = s.permute(0, 2, 1)
     if a_weighting is None:
-        frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=n_fft)
-        a_weighting = librosa.A_weighting(frequencies)
+        frequencies = fft_frequencies(sr=sample_rate, n_fft=n_fft)
+        a_weighting = A_weighting(frequencies)
         a_weighting = torch.from_numpy(a_weighting.astype(np.float32)).to(audio.device)
     loudness = spec_loudness(s, a_weighting, range_db, ref_db)
 

@@ -4,8 +4,7 @@ import torch.nn as nn
 from diffsynth.processor import Processor, Mix
 import diffsynth.util as util
 from diffsynth.f0 import yin_frame, FMIN, FMAX
-from diffsynth.spectral import spec_loudness
-import librosa
+from diffsynth.spectral import spec_loudness, A_weighting, fft_frequencies
 from typing import Dict, Tuple
 import numpy as np
 
@@ -152,8 +151,8 @@ class CachedStreamEstimatorFLSynth(nn.Module):
         self.input_cache = torch.zeros(1, self.window_size - self.offset)
         self.output_cache = torch.zeros(1, self.hop_size)
         # loudness
-        frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=self.window_size)
-        a_weighting = librosa.A_weighting(frequencies)
+        frequencies = fft_frequencies(sr=sample_rate, n_fft=self.window_size)
+        a_weighting = A_weighting(frequencies)
         self.register_buffer('a_weighting', torch.from_numpy(a_weighting.astype(np.float32)))
         self.prev_f0 = torch.ones(1)*440
         # Estimator
