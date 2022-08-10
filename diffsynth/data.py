@@ -2,6 +2,7 @@ import os, glob, pickle, itertools
 from tqdm import tqdm
 import torchaudio
 import torch
+import warnings
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 from diffsynth.f0 import compute_f0, FMIN, FMAX
@@ -46,9 +47,15 @@ class SliceDataset(Dataset):
         idx = 0
         resample = {}
         for audio_file in tqdm(self.raw_files, position=0):
-            audio, orig_sr = torchaudio.load(audio_file)
-            audio = audio.mean(dim=0) # (~channels~, samples)
+            try:
+                audio, orig_sr = torchaudio.load(audio_file)
+                audio = audio.mean(dim=0) # force mono
+            except RuntimeError:
+                warnings.warn('Falling back to librosa because torchaudio loading (sox) failed.')
+                import librosa
+                audio, orig_sr = librosa.load(audio_file, sr=None, mono=True)
             # resample
+            audio = torch.from_numpy(audio)
             if orig_sr != self.sample_rate:
                 if orig_sr not in resample:
                     # save kernel
