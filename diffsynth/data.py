@@ -24,7 +24,7 @@ class SliceDataset(Dataset):
         assert sample_rate % frame_rate == 0
         os.makedirs(db_path, exist_ok=True)
         # max of ~100GB
-        self.lmdb_env = lmdb.open(db_path, map_size=1e11, lock=False)
+        self.lmdb_env = lmdb.open(db_path, map_size=int(1e11), lock=False)
         # check if lmdb database exists
         with self.lmdb_env.begin(write=False) as txn:
             lmdblength = txn.get("length".encode("utf-8"))

@@ -152,7 +152,7 @@ class CachedStreamEstimatorFLSynth(nn.Module):
         self.output_cache = torch.zeros(1, self.hop_size)
         # loudness
         frequencies = fft_frequencies(sr=sample_rate, n_fft=self.window_size)
-        a_weighting = A_weighting(frequencies)
+        a_weighting = A_weighting(frequencies+1e-8)
         self.register_buffer('a_weighting', torch.from_numpy(a_weighting.astype(np.float32)))
         self.prev_f0 = torch.ones(1)*440
         # Estimator

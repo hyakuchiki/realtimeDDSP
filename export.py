@@ -165,7 +165,7 @@ if __name__ == "__main__":
     if args.sounds is not None:
         sounds = args.sounds
     else:
-        sounds = ['data/339357-mono.mp3', 'data/test_lead_mono.mp3']
+        sounds = ['data/413204-mono.mp3', 'data/339357-mono.mp3', 'data/test_lead_mono.mp3']
     for sound in sounds:
         wave, sr = torchaudio.load(sound)
         input_sample = AudioSample(wave, sr)
