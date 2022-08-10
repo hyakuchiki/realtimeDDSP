@@ -9,7 +9,6 @@ benchmark: False
 overfit_batches: 0.0
 limit_train_batches: 1.0
 auto_lr_find: False
-weights_summary: "top"
 check_val_every_n_epoch: 10
 min_epochs: 1
 log_every_n_steps: 50

@@ -1,5 +1,5 @@
 import os, glob, pickle, itertools
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import torchaudio
 import torch
 import warnings
@@ -46,7 +46,7 @@ class SliceDataset(Dataset):
         # load audio
         idx = 0
         resample = {}
-        for audio_file in tqdm(self.raw_files, position=0):
+        for audio_file in tqdm(self.raw_files):
             try:
                 audio, orig_sr = torchaudio.load(audio_file)
                 audio = audio.mean(dim=0) # force mono
@@ -68,7 +68,7 @@ class SliceDataset(Dataset):
             # split 
             audios = torch.split(audio, len_audio_chunk)
 
-            for x in tqdm(audios, position=1, leave=False):
+            for x in audios:
                 # calculate features after slicing
                 if max(abs(x)) < 1e-2:
                     # only includes silence

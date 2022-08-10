@@ -186,7 +186,7 @@ def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_
     s = s.permute(0, 2, 1)
     if a_weighting is None:
         frequencies = fft_frequencies(sr=sample_rate, n_fft=n_fft)
-        a_weighting = A_weighting(frequencies)
+        a_weighting = A_weighting(frequencies+1e-8)
         a_weighting = torch.from_numpy(a_weighting.astype(np.float32)).to(audio.device)
     loudness = spec_loudness(s, a_weighting, range_db, ref_db)
 

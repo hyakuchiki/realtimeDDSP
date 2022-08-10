@@ -16,6 +16,7 @@ ckpt_nepochs: null
 ckpt_nsteps: 10000
 batch_size: 16
 seed: 0
+num_workers: 8
 ckpt: null # Used for resuming from checkpoint
 
 data:
