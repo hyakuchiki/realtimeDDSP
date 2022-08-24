@@ -10,7 +10,7 @@ if __name__ == "__main__":
     parser.add_argument('--length', type=float, default=1.0)
     parser.add_argument('--frame_rate', type=int, default=50)
     parser.add_argument('--f0_range', type=int, nargs=2)
-    parser.add_argument('--f0_viterbi', type=bool, nargs=2)
+    parser.add_argument('--f0_viterbi', type=bool)
     args = parser.parse_args()
 
     pl.seed_everything(seed=0, workers=True)
