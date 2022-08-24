@@ -54,8 +54,8 @@ class SliceDataset(Dataset):
                 warnings.warn('Falling back to librosa because torchaudio loading (sox) failed.')
                 import librosa
                 audio, orig_sr = librosa.load(audio_file, sr=None, mono=True)
+                audio = torch.from_numpy(audio)
             # resample
-            audio = torch.from_numpy(audio)
             if orig_sr != self.sample_rate:
                 if orig_sr not in resample:
                     # save kernel

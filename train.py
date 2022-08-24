@@ -17,8 +17,9 @@ def main(cfg):
     # loggers setup
     tb_logger = pl.loggers.TensorBoardLogger("tb_logs", "", default_hp_metric=False, version='')
     # load dataset
+    print('Starting Preprocessing.')
     dataset = hydra.utils.instantiate(cfg.data)
-    print(f'loaded {len(dataset)} samples')
+    print(f'Loaded {len(dataset)} samples.')
     train_set, valid_set = random_split(dataset, [int(len(dataset)*0.9), len(dataset)-int(len(dataset)*0.9)], generator=torch.Generator().manual_seed(cfg.seed))
     train_dl = DataLoader(train_set, cfg.batch_size, shuffle=True, num_workers=cfg.num_workers, pin_memory=True)
     valid_dl = DataLoader(valid_set, cfg.batch_size, shuffle=False, num_workers=cfg.num_workers)
