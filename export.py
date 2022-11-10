@@ -101,7 +101,7 @@ class DDSPModelWrapper(WaveformToWaveformBase):
 
     def get_neutone_parameters(self) -> List[NeutoneParameter]:
         return [
-            NeutoneParameter(name='Pitch Shift', description='Magnitude of latent noise', default_value=0.5),
+            NeutoneParameter(name='Pitch Shift', description='Apply pitch shift (-24 to +24 semitones)', default_value=0.5),
             NeutoneParameter(name='Harmonics Mix', description='Mix of harmonic synthesizer', default_value=0.5),
             NeutoneParameter(name='Noise Mix', description='Mix of noise synthesizer', default_value=0.5),
             NeutoneParameter(name='Reverb Mix', description='Mix of IR reverb', default_value=0.5),
