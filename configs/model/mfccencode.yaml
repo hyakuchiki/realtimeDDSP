@@ -1,0 +1,14 @@
+lr: 1e-4
+
+estimator:
+  _target_: diffsynth.estimator.EstimatorFL
+  hidden_size: 512
+  encoder:
+    _target_: diffsynth.encoder.MFCCGRUEncoder
+    latent_size: 16
+    sample_rate: ${sample_rate}
+    hidden_size: 512
+    n_fft: 2048
+    hop_length: 960
+
+sample_rate: ${sample_rate}
