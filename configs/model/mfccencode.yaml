@@ -1,8 +1,9 @@
 lr: 1e-4
 
 estimator:
-  _target_: diffsynth.estimator.EstimatorFL
+  _target_: diffsynth.estimator.EstimatorFLZ
   hidden_size: 512
+  latent_size: 16
   encoder:
     _target_: diffsynth.encoder.MFCCGRUEncoder
     latent_size: 16
