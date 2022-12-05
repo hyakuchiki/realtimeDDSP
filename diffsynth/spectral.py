@@ -4,7 +4,6 @@ import numpy as np
 import torch.nn.functional as F
 from torchaudio.transforms import MelScale
 from torchaudio.functional import create_dct
-from diffsynth.util import log_eps, pad_or_trim_to_expected_length
 
 amp = lambda x: x[...,0]**2 + x[...,1]**2
 DB_RANGE = 80.0
@@ -192,13 +191,6 @@ def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_
 
     # Remove temporary batch dimension.
     loudness = loudness[0] if is_1d else loudness
-
-    # Compute expected length of loudness vector
-    n_secs = audio.shape[-1] / float(sample_rate)  # `n_secs` can have milliseconds
-    expected_len = int(n_secs * frame_rate)
-
-    # Pad with `-range_db` noise floor or trim vector
-    loudness = pad_or_trim_to_expected_length(loudness, expected_len, -range_db)
     return loudness
 
 def loudness_loss(input_audio, target_audio, sr=16000):

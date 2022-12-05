@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torchcrepe  
 import math
-from diffsynth.util import pad_or_trim_to_expected_length
 # limit for crepe, always used for normalization
 FMIN = 32.0
 FMAX = 2000.0
@@ -51,8 +50,6 @@ def compute_f0(audio, sample_rate, frame_rate, center=True, f0_range=(FMIN, FMAX
     periodicity = periodicity[0]
 
     n_secs = audio.shape[-1] / float(sample_rate)  # `n_secs` can have milliseconds
-    expected_len = int(n_secs * frame_rate)
-    f0_hz = pad_or_trim_to_expected_length(f0_hz, expected_len, 'replicate')
     return f0_hz, periodicity
 
 """
