@@ -7,6 +7,7 @@ from diffsynth.f0 import yin_frame, FMIN, FMAX
 from diffsynth.spectral import spec_loudness, A_weighting, fft_frequencies
 from typing import Dict, Tuple
 import numpy as np
+from torchaudio.transforms import MFCC
 
 class StatefulGRU(nn.Module):
     def __init__(self, gru):
@@ -136,6 +137,11 @@ def replace_modules(module):
         if isinstance(m, torch.nn.GRU):
             str_m = StatefulGRU(m)
             setattr(module, name, str_m)
+        elif isinstance(m, MFCC):
+            # center must be false to prevent padding
+            mel = m.MelSpectrogram
+            str_m = MFCC(m.sample_rate, m.n_mfcc, m.dct_type, m.norm, m.log_mels, {'hop_length': mel.hop_length, 'n_fft':mel.n_fft, 'n_mels': mel.n_mels, 'f_min': mel.f_min, 'f_max':mel.f_max, 'center':False})
+            setattr(module, name, str_m)
 
 class CachedStreamEstimatorFLSynth(nn.Module):
     # harmonics plus noise model
@@ -189,7 +195,7 @@ class CachedStreamEstimatorFLSynth(nn.Module):
             self.prev_f0 = f0[:, -1]
             # estimator
             f0 = f0_mult * f0
-            x = {'f0': f0[:,:,None], 'loud': loudness[:,:,None]} # batch=1, n_frames=windows.shape[1], 1
+            x = {'f0': f0[:,:,None], 'loud': loudness[:,:,None], 'audio': audio} # batch=1, n_frames=windows.shape[1], 1
             x.update(param)
             est_param = self.estimator(x)
             params_dict = self.synth.fill_params(est_param, x)
