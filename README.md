@@ -20,12 +20,13 @@ pip install -r requirements.txt
 
 Then, run the training script.
 ```
-python train.py name=NAME_OF_OUTPUT data.raw_dir=PATH/TO/.WAV/DIRECTORY data.db_path=PATH/TO/TEMPORARY/DATABASE/DIRECTORY
+python train.py name=NAME_OF_OUTPUT data.raw_dir=PATH/TO/SOUNDS/DIRECTORY data.db_path=PATH/TO/TEMPORARY/DATABASE/DIRECTORY
 ```
 
-The results including checkpoint files (.ckpt) and tensorboard logs are saved under `logs/{name}`.
-Then, you can export the checkpoint file to neutone model (.nm) file.
+The results including checkpoint files (.ckpt) and tensorboard logs are saved under `logs/{name}`. 
+`data.raw_dir` specifies the directory of the folder that contain the audio files. `data.db_path` specifies the directory of the temporary database files (see Details/Preprocessing section below).
 
+After training, you can export the checkpoint file to neutone model (.nm) file.
 ```
 python export.py CKPT_FILE EXPORT_NAME
 ```
