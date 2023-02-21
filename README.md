@@ -55,6 +55,8 @@ Here are some extra arguments you might want to edit:
     - Model learning rate
 - model.estimator.hidden_size (default: 512)
     - Size of the estimator network
+- trainer.gpus (default: 1)
+    - set to 0 for training on CPU (slow)
 
 ### Tips
 

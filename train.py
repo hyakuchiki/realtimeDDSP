@@ -12,6 +12,10 @@ def main(cfg):
     from diffsynth.model import EstimatorSynth
     pl.seed_everything(cfg.seed, workers=True)
     warnings.simplefilter("once")
+    if cfg.trainer.gpus == 0:
+        warnings.warn('Training on CPU, may be very slow.', ResourceWarning)
+        print('Setting dataloader num_workers=0')
+        cfg.num_workers = 0
     # load model
     model = EstimatorSynth(cfg.model, cfg.synth, cfg.loss)
     # loggers setup
