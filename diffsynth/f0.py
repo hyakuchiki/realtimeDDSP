@@ -1,6 +1,7 @@
 import numpy as np
 import torch
-import torchcrepe  
+import torchcrepe
+import warnings
 import math
 from diffsynth.util import pad_or_trim_to_expected_length
 # limit for crepe, always used for normalization
@@ -45,7 +46,11 @@ def compute_f0(audio, sample_rate, frame_rate, center=True, f0_range=(FMIN, FMAX
     # [output_shape=(1, 1 + int(time // hop_length))]
     f0_dec = torchcrepe.decode.viterbi if viterbi else torchcrepe.decode.argmax
     with torch.no_grad():
-        f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=center, device='cuda', batch_size=64, model='full', fmin=f0_range[0], fmax=f0_range[1], return_periodicity=True, decoder=f0_dec)
+        try:
+            f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=center, device='cuda', batch_size=64, model='full', fmin=f0_range[0], fmax=f0_range[1], return_periodicity=True, decoder=f0_dec)
+        except:
+            warnings.warn("GPU not available, detecting f0 on cpu (SLOW)", ResourceWarning)
+            f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=center, device='cpu', batch_size=64, model='full', fmin=f0_range[0], fmax=f0_range[1], return_periodicity=True, decoder=f0_dec)
 
     f0_hz = f0_hz[0]
     periodicity = periodicity[0]

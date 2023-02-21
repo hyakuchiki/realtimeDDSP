@@ -39,6 +39,7 @@ def plot_recons(x, x_tilde, plot_dir, name=None, epochs=None, sr=16000, num=6, s
 def save_to_board(i, name, writer, orig_audio, resyn_audio, plot_num=4, sr=16000):
     orig_audio = orig_audio.detach().cpu()
     resyn_audio = resyn_audio.detach().cpu()
+    plot_num = min(plot_num, orig_audio.shape[0])
     for j in range(plot_num):
         writer.add_audio('{0}_orig/{1}'.format(name, j), orig_audio[j].unsqueeze(0), i, sample_rate=sr)
         writer.add_audio('{0}_resyn/{1}'.format(name, j), resyn_audio[j].unsqueeze(0), i, sample_rate=sr)
