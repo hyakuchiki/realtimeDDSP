@@ -1,4 +1,4 @@
-import os, glob, pickle, itertools
+import os, glob, pickle, itertools, logging
 from tqdm.auto import tqdm
 import torchaudio
 import torch
@@ -8,6 +8,10 @@ import torch.nn.functional as F
 from diffsynth.f0 import compute_f0, FMIN, FMAX
 from diffsynth.spectral import compute_loudness
 import lmdb
+
+logging.basicConfig()
+log = logging.getLogger(__name__)
+log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
 
 class SliceDataset(Dataset):
     # slice length [s] sections from longer audio files like urmp 
@@ -31,6 +35,9 @@ class SliceDataset(Dataset):
         self.len = int(lmdblength) if lmdblength is not None else 0
         if self.len == 0: # database not made or empty
             self.preprocess()
+            log.info('No database found, starting preprocessing...')
+        else:
+            log.info('Loaded preprocessed database')
         if self.len == 0:
             raise Exception(f'No data found @ {raw_dir}')
 

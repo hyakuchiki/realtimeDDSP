@@ -5,7 +5,7 @@ numpy~=1.21.6
 pytorch-lightning~=1.6.4
 torchcrepe~=0.0.16
 tqdm~=4.64.0
-neutone_sdk~=1.0.1
+neutone_sdk>=1.2.1
 
 --extra-index-url https://download.pytorch.org/whl/cu113
 torch==1.11.0+cu113
