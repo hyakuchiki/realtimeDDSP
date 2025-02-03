@@ -17,7 +17,10 @@ class IRReverb(Processor):
         self.register_buffer('zero', torch.zeros(1))
         time = torch.linspace(0.0, 1.0, ir_length-1)
         # initial ir = decaying white noise
-        self.ir = nn.Parameter((torch.rand(ir_length-1)-0.5)*0.1 * torch.exp(-5.0 * time), requires_grad=True)
+        self.ir = nn.Parameter(
+            (torch.rand(ir_length - 1) - 0.5) * 0.1 * torch.exp(-10 * time),
+            requires_grad=True,
+        )
         self.ir_length = ir_length
         self.param_sizes = {'audio': 1}
         self.param_range = {'audio': (-1.0, 1.0)}
