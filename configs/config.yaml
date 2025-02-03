@@ -18,6 +18,8 @@ batch_size: 16
 seed: 0
 num_workers: 8
 ckpt: null # Used for resuming from checkpoint
+xfer_raw_dir: data
+xfer_db_path: temp/xfer
 
 data:
   f0_range: [32, 2000]

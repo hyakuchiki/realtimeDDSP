@@ -1,10 +1,26 @@
-import os
+import os, math
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+import torch.nn.functional as F
 import torchaudio
-from pytorch_lightning.utilities.distributed import rank_zero_only
+from torchaudio.functional import resample
+from diffsynth.util import load_audio_file, pad_or_crop_to_length
+from torch.utils.data._utils.collate import default_collate
+
 from pytorch_lightning.callbacks import Callback
+import librosa
+
+
+def plot_logfreqspec(x, ax, sr=16000):
+    pxx, freqs, bins, _ = ax.specgram(x, NFFT=4096, Fs=sr, scale="dB")
+    ax.pcolormesh(bins, freqs, 10 * np.log10(pxx + 1e-5), cmap="jet", antialiased=True)
+    ax.set_ylim([30, sr // 2])
+    ax.set_yscale("log")
+    end_time = x.shape[-1] / sr
+    ax.set_xlim([0, end_time])
+    return ax
+
 
 def plot_recons(x, x_tilde, plot_dir, name=None, epochs=None, sr=16000, num=6, save=True):
     """Plot spectrograms/waveforms of original/reconstructed audio
@@ -20,8 +36,8 @@ def plot_recons(x, x_tilde, plot_dir, name=None, epochs=None, sr=16000, num=6, s
     """
     fig, axes = plt.subplots(num, 4, figsize=(15, 30), squeeze=False)
     for i in range(num):
-        axes[i, 0].specgram(x[i], Fs=sr, scale='dB')
-        axes[i, 1].specgram(x_tilde[i], Fs=sr, scale='dB')
+        plot_logfreqspec(x[i], axes[i, 0], sr)
+        plot_logfreqspec(x_tilde[i], axes[i, 1], sr)
         axes[i, 2].plot(x[i])
         axes[i, 2].set_ylim(-1,1)
         axes[i, 3].plot(x_tilde[i])
@@ -51,7 +67,6 @@ class AudioLogger(Callback):
         self.batch_freq = batch_frequency
         self.sr = sr
 
-    @rank_zero_only
     def log_local(self, writer, name, current_epoch, orig_audio, resyn_audio):
         save_to_board(current_epoch, name, writer, orig_audio, resyn_audio, plot_num=6, sr=self.sr)
 
@@ -65,7 +80,7 @@ class AudioLogger(Callback):
                 resyn_audio, _outputs = pl_module(batch)
             resyn_audio = torch.clamp(resyn_audio.detach().cpu(), -1, 1)
             orig_audio = torch.clamp(batch['audio'].detach().cpu(), -1, 1)
-            
+
             self.log_local(pl_module.logger.experiment, name, pl_module.current_epoch, orig_audio, resyn_audio)
 
             if is_train:

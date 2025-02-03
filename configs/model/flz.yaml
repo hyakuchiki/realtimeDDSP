@@ -1,0 +1,9 @@
+lr: 1e-4
+
+estimator:
+  _target_: diffsynth.estimator.EstimatorFLZ
+  hidden_size: 512
+  sr: ${sample_rate}
+  n_mfcc: 20
+
+sample_rate: ${sample_rate}

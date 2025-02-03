@@ -159,14 +159,24 @@ def fft_frequencies(*, sr=22050, n_fft=2048):
     # ported from librosa
     return np.fft.rfftfreq(n=n_fft, d=1.0 / sr)
 
-def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_db=DB_RANGE, ref_db=0.0, a_weighting=None, center=True):
+
+def compute_loudness(
+    audio,
+    sample_rate=16000,
+    hop_length=512,
+    n_fft=2048,
+    range_db=DB_RANGE,
+    ref_db=0.0,
+    a_weighting=None,
+    center=True,
+):
     """Perceptual loudness in dB, relative to white noise, amplitude=1.
 
     Args:
         audio: tensor. Shape [batch_size, audio_length] or [audio_length].
         sample_rate: Audio sample rate in Hz.
-        frame_rate: Rate of loudness frames in Hz.
-        n_fft: Fft window size.
+        hop_length: FFT hop length
+        n_fft: FFT window size.
         range_db: Sets the dynamic range of loudness in decibels. The minimum loudness (per a frequency bin) corresponds to -range_db.
         ref_db: Sets the reference maximum perceptual loudness as given by (A_weighting + 10 * log10(abs(stft(audio))**2.0).
 
@@ -179,8 +189,14 @@ def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_
         audio = audio[None, :]
 
     # Take STFT.
-    hop_length = sample_rate // frame_rate
-    s = torch.stft(audio, n_fft=n_fft, hop_length=hop_length, return_complex=True, center=center)
+    s = torch.stft(
+        audio,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        return_complex=True,
+        center=center,
+        window=torch.hann_window(2048, device=audio.device),
+    )
     # batch, frequency_bins, n_frames
     s = s.permute(0, 2, 1)
     if a_weighting is None:
@@ -191,7 +207,15 @@ def compute_loudness(audio, sample_rate=16000, frame_rate=50, n_fft=2048, range_
 
     # Remove temporary batch dimension.
     loudness = loudness[0] if is_1d else loudness
+
+    # Compute expected length of loudness vector
+    # n_secs = audio.shape[-1] / float(sample_rate)  # `n_secs` can have milliseconds
+    # expected_len = int(n_secs * frame_rate)
+
+    # Pad with `-range_db` noise floor or trim vector
+    # loudness = pad_or_trim_to_expected_length(loudness, expected_len, -range_db)
     return loudness
+
 
 def loudness_loss(input_audio, target_audio, sr=16000):
     input_l = compute_loudness(input_audio, sr)

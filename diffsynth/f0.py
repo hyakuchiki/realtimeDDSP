@@ -2,7 +2,8 @@ import numpy as np
 import torch
 import torchcrepe  
 import math
-# limit for crepe, always used for normalization
+from diffsynth.fcpe import infer_fcpe
+
 FMIN = 32.0
 FMAX = 2000.0
 
@@ -25,8 +26,14 @@ def process_f0(f0_hz, periodicity):
     f0_hz[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), f0_hz[~mask])
     return torch.from_numpy(f0_hz)# Shape [1 + int(time // hop_length,]
 
-def compute_f0(audio, sample_rate, frame_rate, center=True, f0_range=(FMIN, FMAX), viterbi=True):
-    """ For preprocessing
+
+def compute_f0(
+    audio,
+    sample_rate,
+    hop_length,
+    f0_range=(FMIN, FMAX),
+):
+    """For preprocessing
     Args:
         audio: torch.Tensor of single audio example. Shape [audio_length,].
         sample_rate: Sample rate in Hz.
@@ -35,22 +42,12 @@ def compute_f0(audio, sample_rate, frame_rate, center=True, f0_range=(FMIN, FMAX
         f0_hz: Fundamental frequency in Hz. Shape [n_frames]
         periodicity: Basically, confidence of pitch value. Shape [n_frames]
     """
-    audio = audio[None, :]
-
-    hop_length = sample_rate // frame_rate
-    # Compute f0 with torchcrepe.
-    # uses viterbi by default
-    # pad=False is probably center=False
-    # [output_shape=(1, 1 + int(time // hop_length))]
-    f0_dec = torchcrepe.decode.viterbi if viterbi else torchcrepe.decode.argmax
-    with torch.no_grad():
-        f0_hz, periodicity = torchcrepe.predict(audio, sample_rate, hop_length=hop_length, pad=center, device='cuda', batch_size=64, model='full', fmin=f0_range[0], fmax=f0_range[1], return_periodicity=True, decoder=f0_dec)
-
-    f0_hz = f0_hz[0]
-    periodicity = periodicity[0]
-
-    n_secs = audio.shape[-1] / float(sample_rate)  # `n_secs` can have milliseconds
+    # Compute f0 with torchfcpe.
+    # not sure if centered properly
+    f0_hz = infer_fcpe(audio, hop_length, sample_rate, f0_range)
+    periodicity = None
     return f0_hz, periodicity
+
 
 """
 Code below ported from torchyin

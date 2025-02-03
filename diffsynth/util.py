@@ -1,8 +1,9 @@
+import math
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 import torch.nn.functional as F
-import math
+import torchaudio
 
 class StatsLog():
     def __init__(self):
@@ -144,7 +145,7 @@ def linear_lookup(phase: torch.Tensor, wavetable: torch.Tensor):
     weights = nn.functional.relu(1.0 - phase_distance) # [batch_size, n_samples, len_waveform]
     weighted_wavetables = weights * wavetable
     return torch.sum(weighted_wavetables, dim=-1)
-    
+
 def resample_frames(inputs: torch.Tensor, n_timesteps: int, mode: str='linear', add_endpoint: bool=True):
     """interpolate signals with a value each frame into signal with a value each timestep
     [n_frames] -> [n_timesteps]
@@ -327,6 +328,36 @@ def frame_signal(signal: torch.Tensor, frame_size: int):
     frames = torch.split(signal.unsqueeze(1), frame_size, dim=-1)
     return torch.cat(frames, dim=1)
 
+def center_pad(
+    x: torch.Tensor,
+    win_size: int,
+    hop_size: int,
+    pad_last: bool = True,
+    center_type: str = "half_hop",
+):
+    """
+    pad so that the k-th window is centered around timestep (k-1)*h
+    (or almost because window sizes are even).
+    pad_last=True pads end to calculate one extra window
+    so that last frame is centered around t > L.
+    This seems necessary for align_corners=True
+    This doesn't matter if x.shape[-1] % hop_size=0
+    """
+    if center_type == "half-hop":  # first window centered around half of hop size
+        pad_left = (win_size - hop_size) // 2
+    elif center_type == "zero":
+        pad_left = win_size // 2
+    else:
+        pad_left = 0
+    audio_len = x.shape[-1]
+    if pad_last and audio_len % hop_size > 0:
+        n_wins = math.ceil(audio_len / hop_size)
+        pad_right = n_wins * hop_size + pad_left - audio_len
+    else:
+        pad_right = win_size // 2
+    return F.pad(x, (pad_left, pad_right))
+
+
 def slice_windows(signal: torch.Tensor, frame_size: int, hop_size: int, window:str='none', pad:bool=True):
     """
     slice signal into overlapping frames
@@ -374,7 +405,7 @@ def variable_delay(phase: torch.Tensor, audio: torch.Tensor, buf_size: int):
     # shape: (B, C=1, H=1, W)
     output = output.squeeze(2).squeeze(1)
     return output
-    
+
 def overlap_and_add(signal:torch.Tensor, frame_step: int):
     """overlap-add signals ported from tf.signals
 
@@ -668,6 +699,36 @@ def frequencies_sigmoid(freqs: torch.Tensor, hz_min:float=8.2, hz_max:float=8000
     """
     freqs = torch.sigmoid(freqs)
     return unit_to_hz(freqs, hz_min=hz_min, hz_max=hz_max)
+
+
+def load_audio_file(filepath, mono=True, frame_offset=0, num_frames=-1):
+    """
+    Args:
+        filepath (str): path of sound file to load
+        mono (bool, optional): Force sound to be mono. Defaults to True.
+
+    Returns:
+        (torch.Tensor, int): Audio tensor (channels, n_samples) and sample rate
+    """
+    audio, orig_sr = torchaudio.load(
+        filepath, frame_offset=frame_offset, num_frames=num_frames
+    )
+    if mono:
+        audio = audio.mean(dim=0, keepdim=True)  # force mono
+    else:
+        if audio.shape[0] == 1:
+            audio = audio.expand(2, -1)
+    return audio.float(), orig_sr
+
+
+def pad_or_crop_to_length(x: torch.Tensor, length: int):
+    remain = length - x.shape[-1]
+    if remain < 0:  # crop
+        x = x[..., :length]
+    elif remain > 0:  # pad
+        x = F.pad(x, (0, remain))
+    return x
+
 
 # def upsample_with_windows(inputs, n_timesteps, add_endpoint):
 #     """[summary]
