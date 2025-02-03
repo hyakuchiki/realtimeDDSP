@@ -62,35 +62,46 @@ def save_to_board(i, name, writer, orig_audio, resyn_audio, plot_num=4, sr=16000
     writer.add_figure('plot_recon_{0}'.format(name), fig, i)
 
 class AudioLogger(Callback):
-    def __init__(self, batch_frequency=1000, sr=16000):
+
+    def __init__(self, epoch_frequency=10, sr=16000):
         super().__init__()
-        self.batch_freq = batch_frequency
+        self.epoch_freq = epoch_frequency
         self.sr = sr
 
     def log_local(self, writer, name, current_epoch, orig_audio, resyn_audio):
         save_to_board(current_epoch, name, writer, orig_audio, resyn_audio, plot_num=6, sr=self.sr)
 
     def log_audio(self, pl_module, batch, batch_idx, name="train"):
-        if batch_idx % self.batch_freq == 0:
-            is_train = pl_module.training
-            if is_train:
-                pl_module.eval()
-            # get audio
-            with torch.no_grad():
-                resyn_audio, _outputs = pl_module(batch)
-            resyn_audio = torch.clamp(resyn_audio.detach().cpu(), -1, 1)
-            orig_audio = torch.clamp(batch['audio'].detach().cpu(), -1, 1)
+        is_train = pl_module.training
+        if is_train:
+            pl_module.eval()
+        # get audio
+        with torch.no_grad():
+            resyn_audio, _outputs = pl_module(batch)
+        resyn_audio = torch.clamp(resyn_audio.detach().cpu(), -1, 1)
+        orig_audio = torch.clamp(batch["audio"].detach().cpu(), -1, 1)
 
-            self.log_local(pl_module.logger.experiment, name, pl_module.current_epoch, orig_audio, resyn_audio)
+        self.log_local(
+            pl_module.logger.experiment,
+            name,
+            pl_module.current_epoch,
+            orig_audio,
+            resyn_audio,
+        )
 
-            if is_train:
-                pl_module.train()
+        if is_train:
+            pl_module.train()
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        self.log_audio(pl_module, batch, batch_idx, name="train")
+        if batch_idx == 0:
+            if pl_module.current_epoch % self.epoch_freq == 0:
+                self.log_audio(pl_module, batch, batch_idx, name="train")
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self.log_audio(pl_module, batch, batch_idx, name="val_"+str(dataloader_idx))
+        if batch_idx == 0:
+            self.log_audio(
+                pl_module, batch, batch_idx, name="val_" + str(dataloader_idx)
+            )
 
 class SaveEvery(Callback):
     def __init__(self, every_n=50):
