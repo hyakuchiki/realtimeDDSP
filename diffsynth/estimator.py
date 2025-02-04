@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from nnAudio.features import MFCC
 
 from diffsynth.layers import MLP
 from diffsynth.f0 import FMIN, FMAX

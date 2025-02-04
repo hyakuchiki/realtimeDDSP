@@ -2,9 +2,10 @@ import hydra
 import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from nnAudio.features import MFCC
 
 from itertools import chain
-from diffsynth.spectral import compute_lsd, loudness_loss, Mfcc, spectral_convergence
+from diffsynth.spectral import compute_lsd, loudness_loss, spectral_convergence
 from diffsynth.schedules import ParamSchedule
 from diffsynth.synthesizer import Synthesizer
 
@@ -26,7 +27,7 @@ class EstimatorSynth(pl.LightningModule):
         self.loss_w_sched = ParamSchedule(losses_cfg.sched) # loss weighting
         self.sr = model_cfg.sample_rate
         self.lr = model_cfg.lr
-        self.mfcc = Mfcc(n_fft=1024, hop_length=256, n_mels=40, n_mfcc=20, sample_rate=self.sr)
+        self.mfcc = MFCC(sr=self.sr, n_fft=2048, hop_length=512, n_mfcc=20)
         self.save_hyperparameters()
 
     def estimate_param(self, conditioning):

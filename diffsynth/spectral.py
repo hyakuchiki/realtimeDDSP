@@ -8,74 +8,6 @@ from torchaudio.functional import create_dct
 amp = lambda x: x[...,0]**2 + x[...,1]**2
 DB_RANGE = 80.0
 
-class MelSpec(nn.Module):
-    def __init__(self, n_fft=2048, hop_length=1024, n_mels=128, sample_rate=16000, power=1, f_min=40, f_max=7600, pad_end=True, center=True):
-        """
-        
-        """
-        super().__init__()
-        self.n_fft = n_fft
-        self.hop_length = hop_length
-        self.power = power
-        self.f_min = f_min
-        self.f_max = f_max
-        self.sample_rate = sample_rate
-        self.n_mels = n_mels
-        self.pad_end = pad_end
-        self.center = center
-        self.mel_scale = MelScale(self.n_mels, self.sample_rate, self.f_min, self.f_max, self.n_fft // 2 + 1)
-    
-    def forward(self, audio):
-        if self.pad_end:
-            _batch_dim, l_x = audio.shape
-            remainder = (l_x - self.n_fft) % self.hop_length
-            pad = 0 if (remainder == 0) else self.hop_length - remainder
-            audio = F.pad(audio, (0, pad), 'constant')
-        spec = spectrogram(audio, self.n_fft, self.hop_length, self.power, self.center)
-        mel_spec = self.mel_scale(spec)
-        return mel_spec
-
-class Spec(nn.Module):
-    def __init__(self, n_fft=2048, hop_length=1024, power=2, pad_end=True, center=True):
-        """
-        
-        """
-        super().__init__()
-        self.n_fft = n_fft
-        self.hop_length = hop_length
-        self.power = power
-        self.pad_end = pad_end
-        self.center = center
-    
-    def forward(self, audio):
-        if self.pad_end:
-            _batch_dim, l_x = audio.shape
-            remainder = (l_x - self.n_fft) % self.hop_length
-            pad = 0 if (remainder == 0) else self.hop_length - remainder
-            audio = F.pad(audio, (0, pad), 'constant')
-        spec = spectrogram(audio, self.n_fft, self.hop_length, self.power, self.center)
-        return spec
-
-class Mfcc(nn.Module):
-    def __init__(self, n_fft=2048, hop_length=1024, n_mels=128, n_mfcc=40, norm='ortho', sample_rate=16000, f_min=40, f_max=7600, pad_end=True, center=True):
-        """
-        uses log mels
-        """
-        super().__init__()
-        self.norm = norm
-        self.n_mfcc = n_mfcc
-        self.melspec = MelSpec(n_fft, hop_length, n_mels, sample_rate, power=2, f_min=f_min, f_max=f_max, pad_end=pad_end, center=center)
-        dct_mat = create_dct(self.n_mfcc, self.melspec.n_mels, self.norm)
-        self.register_buffer('dct_mat', dct_mat)
-
-    def forward(self, audio):
-        mel_spec = self.melspec(audio)
-        mel_spec = torch.log(mel_spec+1e-6)
-        # (batch, n_mels, time).tranpose(...) dot (n_mels, n_mfcc)
-        # -> (batch, time, n_mfcc).tranpose(...)
-        mfcc = torch.matmul(mel_spec.transpose(1, 2), self.dct_mat).transpose(1, 2)
-        return mfcc
-
 def spectrogram(audio, size=2048, hop_length=1024, power=2, center=True, window=None):
     power_spec = amp(torch.view_as_real(torch.stft(audio, size, window=window, hop_length=hop_length, center=center, return_complex=True)))
     if power == 2:
@@ -195,7 +127,7 @@ def compute_loudness(
         hop_length=hop_length,
         return_complex=True,
         center=center,
-        window=torch.hann_window(2048, device=audio.device),
+        window=torch.hann_window(n_fft, device=audio.device),
     )
     # batch, frequency_bins, n_frames
     s = s.permute(0, 2, 1)

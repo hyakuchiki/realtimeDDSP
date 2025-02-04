@@ -1,13 +1,13 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-from diffsynth.processor import Processor, Mix
+from diffsynth.processor import Processor
 import diffsynth.util as util
 from diffsynth.f0 import yin_frame, FMIN, FMAX
 from diffsynth.spectral import spec_loudness, A_weighting, fft_frequencies
 from typing import Dict, Tuple
 import numpy as np
-from torchaudio.transforms import MFCC
+from nnAudio.features import MFCC
 
 class StatefulGRU(nn.Module):
     def __init__(self, gru):
@@ -90,9 +90,12 @@ class StreamFilteredNoise(Processor):
         freq_response = params['freq_response']
         batch_size = freq_response.shape[0]
         # noise
-        audio = (torch.rand(batch_size, n_samples)*2.0-1.0).to(freq_response.device) * self.amplitude
-        
-        filtered = util.fir_filter(audio, freq_response, self.filter_size, padding='valid')
+        audio = (torch.rand(batch_size, n_samples) * 2.0 - 1.0).to(
+            freq_response.device
+        ) * self.amplitude
+        filtered = util.fir_filter(
+            audio, freq_response, self.filter_size, padding="same"
+        )
         output = filtered[..., :n_samples]
         cache = F.pad(self.cache, pad=(0, n_samples-self.cache.shape[-1]))
         output = output + cache
@@ -137,34 +140,122 @@ def replace_modules(module):
         if isinstance(m, torch.nn.GRU):
             str_m = StatefulGRU(m)
             setattr(module, name, str_m)
-        elif isinstance(m, MFCC):
-            # center must be false to prevent padding
-            mel = m.MelSpectrogram
-            str_m = MFCC(m.sample_rate, m.n_mfcc, m.dct_type, m.norm, m.log_mels, {'hop_length': mel.hop_length, 'n_fft':mel.n_fft, 'n_mels': mel.n_mels, 'f_min': mel.f_min, 'f_max':mel.f_max, 'center':False})
-            setattr(module, name, str_m)
+
+
+class Spec2Mfcc(nn.Module):
+    def __init__(
+        self,
+        sample_rate,
+        n_mfcc,
+        hop_length,
+        window_size,
+    ):
+        super().__init__()
+        # load default mfcc
+        mfcc = MFCC(
+            sample_rate,
+            n_mfcc,
+            # center=True,
+            hop_length=hop_length,
+            n_fft=window_size,
+            verbose=False,
+        )
+        self.top_db = mfcc.top_db
+        self.amin = mfcc.amin
+        self.ref = mfcc.ref
+        self.n_mfcc = mfcc.n_mfcc
+        self.mel_basis = mfcc.melspec_layer.mel_basis
+
+    def _power_to_db(self, S):
+        log_spec = 10.0 * torch.log10(torch.max(S, self.amin))
+        log_spec -= 10.0 * torch.log10(torch.max(self.amin, self.ref))
+        # make the dim same as log_spec so that it can be broadcasted
+        batch_wise_max = log_spec.flatten(1).max(1)[0].unsqueeze(1).unsqueeze(1)
+        log_spec = torch.max(log_spec, batch_wise_max - self.top_db)
+        return log_spec
+
+    def _dct(self, x):
+        """
+        Refer to https://github.com/zh217/torch-dct for the original implmentation.
+        """
+        x = x.permute(
+            0, 2, 1
+        )  # make freq the last axis, since dct applies to the frequency axis
+        x_shape = x.shape
+        N = x_shape[-1]
+
+        v = torch.cat([x[:, :, ::2], x[:, :, 1::2].flip([2])], dim=2)
+        Vc = torch.view_as_real(torch.fft.fft(v))
+
+        # TODO: Can make the W_r and W_i trainable here
+        k = (
+            -torch.arange(N, dtype=x.dtype, device=x.device)[None, :]
+            * torch.pi
+            / (2 * N)
+        )
+        W_r = torch.cos(k)
+        W_i = torch.sin(k)
+
+        V = Vc[:, :, :, 0] * W_r - Vc[:, :, :, 1] * W_i
+
+        # if norm == "ortho":
+        V[:, :, 0] /= torch.sqrt(torch.tensor([N])).item() * 2
+        V[:, :, 1:] /= torch.sqrt(torch.tensor([N]) / 2).item() * 2
+
+        V = 2 * V
+        return V.permute(0, 2, 1)
+
+    def forward(self, spec):
+        power_spec = spec.real**2 + spec.imag**2
+        melspec = torch.matmul(self.mel_basis, power_spec)
+        melspec = self._power_to_db(melspec)
+        mfcc = self._dct(melspec)[:, : self.n_mfcc, :]
+        return mfcc
+
 
 class CachedStreamEstimatorFLSynth(nn.Module):
     # harmonics plus noise model
-    def __init__(self, estimator, synth, sample_rate, hop_size=960, pitch_min=50.0, pitch_max=2000.0):
+    def __init__(
+        self,
+        estimator,
+        synth,
+        sample_rate,
+        hop_size=512,
+        pitch_min=50.0,
+        pitch_max=2000.0,
+    ):
         super().__init__()
         self.sample_rate = sample_rate       
         self.pitch_min = pitch_min
         self.pitch_max = pitch_max
         # caching
         self.offset = hop_size
-        self.hop_size = hop_size # 960@48kHz = 50Hz
+        self.hop_size = hop_size
         self.window_size = 2048
         self.input_cache = torch.zeros(1, self.window_size - self.offset)
         self.output_cache = torch.zeros(1, self.hop_size)
         # loudness
         frequencies = fft_frequencies(sr=sample_rate, n_fft=self.window_size)
         a_weighting = A_weighting(frequencies+1e-8)
-        self.register_buffer('a_weighting', torch.from_numpy(a_weighting.astype(np.float32)))
+        self.register_buffer(
+            "a_weighting",
+            torch.from_numpy(a_weighting.astype(np.float32)),
+            persistent=False,
+        )
         self.prev_f0 = torch.ones(1)*440
         # Estimator
         self.estimator = estimator
         # Synth
         self.synth = synth
+        self.register_buffer(
+            "window", torch.hann_window(self.window_size), persistent=False
+        )
+        self.spec2mfcc = Spec2Mfcc(
+            sample_rate=sample_rate,
+            n_mfcc=20,
+            hop_length=hop_size,
+            window_size=self.window_size,
+        )
 
     def forward(self, audio: torch.Tensor, f0_mult: torch.Tensor, param: Dict[str, torch.Tensor]):
         # audio (batch=1, n_samples=L)
@@ -172,7 +263,9 @@ class CachedStreamEstimatorFLSynth(nn.Module):
             orig_len = audio.shape[-1]
             # input cache
             audio = torch.cat([self.input_cache.to(audio.device), audio], dim=-1)
+            # doesn't do anything
             windows = util.slice_windows(audio, self.window_size, self.hop_size, pad=False)
+            windows = self.window[None, None, :] * windows
 
             self.offset = self.hop_size - ((orig_len - self.offset) % self.hop_size)
             self.input_cache = audio[:, -(self.window_size - self.offset):]
@@ -180,6 +273,7 @@ class CachedStreamEstimatorFLSynth(nn.Module):
             f0 = yin_frame(windows, self.sample_rate, self.pitch_min, self.pitch_max)
             # loudness
             comp_spec = torch.fft.rfft(windows, dim=-1)
+            mfcc = self.spec2mfcc(comp_spec.permute(0, 2, 1))
             loudness = spec_loudness(comp_spec, self.a_weighting)
 
             if f0[:, 0] == 0:
@@ -195,7 +289,12 @@ class CachedStreamEstimatorFLSynth(nn.Module):
             self.prev_f0 = f0[:, -1]
             # estimator
             f0 = f0_mult * f0
-            x = {'f0': f0[:,:,None], 'loud': loudness[:,:,None], 'audio': audio} # batch=1, n_frames=windows.shape[1], 1
+            x = {
+                "f0": f0[:, :, None],
+                "loud": loudness[:, :, None],
+                "audio": audio,
+                "mfcc": mfcc,
+            }  # batch=1, n_frames=windows.shape[1], 1
             x.update(param)
             est_param = self.estimator(x)
             params_dict = self.synth.fill_params(est_param, x)
@@ -206,4 +305,4 @@ class CachedStreamEstimatorFLSynth(nn.Module):
             if resyn_audio.shape[-1] > orig_len:
                 self.output_cache = resyn_audio[:, orig_len:]
                 resyn_audio = resyn_audio[:, :orig_len]
-            return resyn_audio, (loudness, f0)
+            return resyn_audio

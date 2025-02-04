@@ -64,6 +64,8 @@ def get_stream_synth(synth):
     new_synth = Synthesizer(dag, conditioned=conditioned)
     return new_synth
 
+BUF_SIZE = 2048
+
 class DDSPModelWrapper(WaveformToWaveformBase):
     def get_model_name(self) -> str:
         return "DDSP.example"
@@ -116,31 +118,35 @@ class DDSPModelWrapper(WaveformToWaveformBase):
         return [48000]
 
     def get_native_buffer_sizes(self) -> List[int]:
-        return [2048]
+        return [2048]  # BUF_SIZE
+
+    def calc_model_delay_samples(self) -> int:
+        # model latency should also be added if non-causal
+        return 2048 // 2  # half of window size
 
     def get_citation(self) -> str:
         return """
         Engel, J., Hantrakul, L., Gu, C., & Roberts, A. (2020). DDSP:Differentiable Digital Signal Processing. ICLR.
         """
 
-    @torch.no_grad()
     def do_forward_pass(
         self, x: Tensor,
         params: Dict[str, torch.Tensor]
     ) -> Tensor:
-        if x.size(0) == 2:
-            x = x.mean(dim=0, keepdim=True)
-        # pitch shift parameter
-        MAX_SHIFT = 24 # semitones
-        pshift = (params['Pitch Shift'] - 0.5) * 2 * MAX_SHIFT # -24~24
-        semishift = torch.round(pshift)
-        f0_mult = 2**(semishift/12)
-        # Harmonics/Noise, reverb mix
-        harm_mix = params['Harmonics Mix'] * 2 # 0(no harmonics)~2
-        noise_mix = params['Noise Mix'] * 2 # 0(no noise)~2
-        rev_mix = params['Reverb Mix'] # 0(no reverb)~1(reverb only)
-        cond_params = {'harmmix': harm_mix, 'noisemix': noise_mix, 'irmix': rev_mix}
-        out, data = self.model(x, f0_mult=f0_mult, param=cond_params)
+        with torch.no_grad():
+            if x.size(0) == 2:
+                x = x.mean(dim=0, keepdim=True)
+            # pitch shift parameter
+            MAX_SHIFT = 24  # semitones
+            pshift = (params["Pitch Shift"] - 0.5) * 2 * MAX_SHIFT  # -24~24
+            semishift = torch.round(pshift)
+            f0_mult = 2 ** (semishift / 12)
+            # Harmonics/Noise, reverb mix
+            harm_mix = params["Harmonics Mix"] * 2  # 0(no harmonics)~2
+            noise_mix = params["Noise Mix"] * 2  # 0(no noise)~2
+            rev_mix = params["Reverb Mix"]  # 0(no reverb)~1(reverb only)
+            cond_params = {"harmmix": harm_mix, "noisemix": noise_mix, "irmix": rev_mix}
+            out = self.model(x, f0_mult=f0_mult, param=cond_params)
         return out
 
 if __name__ == "__main__":
@@ -152,12 +158,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     root_dir = Path(args.folder) / args.output
 
-    model = EstimatorSynth.load_from_checkpoint(args.ckpt)
+    model = EstimatorSynth.load_from_checkpoint(
+        args.ckpt, strict=False, map_location="cpu"
+    ).eval()
     replace_modules(model.estimator)
     # get streamable hpnir synth with mix parameters
     model.synth = get_stream_synth(model.synth)
-    stream_model = CachedStreamEstimatorFLSynth(model.estimator, model.synth, 48000, hop_size=960)
-    dummy = torch.zeros(1, 2048)
+    stream_model = CachedStreamEstimatorFLSynth(
+        model.estimator, model.synth, 48000, hop_size=512
+    )
+    dummy = torch.zeros(1, BUF_SIZE)
     _ = stream_model(dummy, torch.ones(1), {'harmmix': torch.ones(1), 'noisemix': torch.ones(1), 'irmix': torch.ones(1)*0.5})
     wrapper = DDSPModelWrapper(stream_model)
 
@@ -165,7 +175,7 @@ if __name__ == "__main__":
     if args.sounds is not None:
         sounds = args.sounds
     else:
-        sounds = ['data/413204-mono.mp3', 'data/339357-mono.mp3', 'data/test_lead_mono.mp3']
+        sounds = ["data/413204-mono.mp3", "data/vocal.mp3"]
     for sound in sounds:
         wave, sr = torchaudio.load(sound)
         input_sample = AudioSample(wave, sr)
