@@ -9,7 +9,6 @@ from diffsynth.util import load_audio_file, pad_or_crop_to_length
 from torch.utils.data._utils.collate import default_collate
 
 from pytorch_lightning.callbacks import Callback
-import librosa
 
 
 def plot_logfreqspec(x, ax, sr=16000):

@@ -1,31 +1,10 @@
 import numpy as np
 import torch
-import torchcrepe  
 import math
 from diffsynth.fcpe import infer_fcpe
 
 FMIN = 32.0
 FMAX = 2000.0
-
-def process_f0(f0_hz, periodicity):
-    # Shape [1, 1 + int(time // hop_length,]
-    # Postprocessing on f0_hz
-    # replace unvoiced regions with NaN
-    # win_length = 3
-    # periodicity = torchcrepe.filter.mean(periodicity, win_length)
-    threshold = 1e-3
-    # if all noisy, do not perform thresholding
-    if (periodicity > threshold).any():
-        f0_hz = torchcrepe.threshold.At(1e-3)(f0_hz, periodicity)
-    # f0_hz = torchcrepe.filter.mean(f0_hz, win_length)
-    f0_hz = f0_hz[0]
-    # interpolate Nans
-    # https://stackoverflow.com/questions/9537543/replace-nans-in-numpy-array-with-closest-non-nan-value
-    f0_hz = f0_hz.numpy()
-    mask = np.isnan(f0_hz)
-    f0_hz[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), f0_hz[~mask])
-    return torch.from_numpy(f0_hz)# Shape [1 + int(time // hop_length,]
-
 
 def compute_f0(
     audio,

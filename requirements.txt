@@ -10,3 +10,4 @@ torch
 torchaudio
 torchfcpe
 nnaudio
+tensorboard
